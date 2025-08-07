@@ -1,0 +1,277 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Card,
+  Form,
+  Input,
+  Select,
+  Switch,
+  DatePicker,
+  InputNumber,
+  Button,
+  Space,
+  Typography,
+  message,
+  Divider,
+} from 'antd';
+import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import { paperApi, examApi } from '../services/api';
+import type { Paper, CreateExamForm } from '../types';
+
+const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
+
+const ExamCreate: React.FC = () => {
+  const navigate = useNavigate();
+  const [form] = Form.useForm();
+  const [papers, setPapers] = useState<Paper[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasPassword, setHasPassword] = useState(false);
+  const [hasTimeLimit, setHasTimeLimit] = useState(false);
+
+  useEffect(() => {
+    loadPapers();
+  }, []);
+
+  // 加载试卷列表
+  const loadPapers = async () => {
+    try {
+      const response = await paperApi.getList();
+      if (response.success && response.data) {
+        setPapers(response.data);
+      }
+    } catch (error) {
+      console.error('加载试卷列表失败:', error);
+      message.error('加载试卷列表失败');
+    }
+  };
+
+  // 表单提交处理
+  const handleSubmit = async (values: any) => {
+    try {
+      setLoading(true);
+
+      // 构建提交数据
+      const submitData: CreateExamForm = {
+        paper_id: values.paper_id,
+        title: values.title.trim(),
+        duration_minutes: values.duration_minutes,
+        shuffle_questions: values.shuffle_questions || false,
+        password: hasPassword ? values.password?.trim() : undefined,
+        start_time: hasTimeLimit && values.time_range?.[0] 
+          ? values.time_range[0].toISOString() 
+          : undefined,
+        end_time: hasTimeLimit && values.time_range?.[1] 
+          ? values.time_range[1].toISOString() 
+          : undefined,
+      };
+
+      const response = await examApi.create(submitData);
+      if (response.success) {
+        message.success('考试创建成功！当前为草稿状态，请在考试列表中发布考试。');
+        navigate('/exams');
+      } else {
+        message.error(response.error || '考试创建失败');
+      }
+    } catch (error) {
+      console.error('创建考试失败:', error);
+      message.error('创建考试失败，请重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 24 }}>
+        <Space>
+          <Button 
+            icon={<ArrowLeftOutlined />} 
+            onClick={() => navigate('/exams')}
+          >
+            返回
+          </Button>
+          <Title level={2} style={{ margin: 0 }}>
+            创建考试
+          </Title>
+        </Space>
+      </div>
+
+      <Card>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSubmit}
+          autoComplete="off"
+          initialValues={{
+            duration_minutes: 30,
+            shuffle_questions: false,
+          }}
+        >
+          {/* 基本信息 */}
+          <Divider orientation="left">基本信息</Divider>
+          
+          <Form.Item
+            label="选择试卷"
+            name="paper_id"
+            rules={[{ required: true, message: '请选择试卷' }]}
+          >
+            <Select
+              placeholder="选择要发布的试卷"
+              showSearch
+              optionFilterProp="children"
+              filterOption={(input, option) =>
+                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            >
+              {papers.map(paper => (
+                <Select.Option key={paper.id} value={paper.id} label={paper.title}>
+                  <div>
+                    <div style={{ fontWeight: 500 }}>{paper.title}</div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {paper.question_count} 道题 | {paper.description || '暂无描述'}
+                    </Text>
+                  </div>
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            label="考试标题"
+            name="title"
+            rules={[
+              { required: true, message: '请输入考试标题' },
+              { min: 2, max: 100, message: '考试标题应在2-100字符之间' }
+            ]}
+          >
+            <Input
+              placeholder="为这次考试起一个标题，例如：2025年春季心理健康普查"
+              maxLength={100}
+              showCount
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="考试时长（分钟）"
+            name="duration_minutes"
+            rules={[
+              { required: true, message: '请设置考试时长' },
+              { type: 'number', min: 1, max: 480, message: '考试时长应在1-480分钟之间' }
+            ]}
+          >
+            <InputNumber
+              style={{ width: 200 }}
+              placeholder="30"
+              addonAfter="分钟"
+              min={1}
+              max={480}
+            />
+          </Form.Item>
+
+          {/* 高级设置 */}
+          <Divider orientation="left">高级设置</Divider>
+
+          <Form.Item
+            label="题目顺序"
+            name="shuffle_questions"
+            valuePropName="checked"
+          >
+            <Switch
+              checkedChildren="随机打乱"
+              unCheckedChildren="按序显示"
+            />
+            <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+              开启后，每个学生看到的题目顺序都不同
+            </Text>
+          </Form.Item>
+
+          {/* 密码保护 */}
+          <Form.Item label="密码保护">
+            <Switch
+              checked={hasPassword}
+              onChange={setHasPassword}
+              checkedChildren="需要密码"
+              unCheckedChildren="无需密码"
+            />
+            <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+              开启后，学生需要输入密码才能参加考试
+            </Text>
+          </Form.Item>
+
+          {hasPassword && (
+            <Form.Item
+              label="考试密码"
+              name="password"
+              rules={[
+                { required: true, message: '请设置考试密码' },
+                { min: 4, max: 20, message: '密码长度应在4-20字符之间' }
+              ]}
+            >
+              <Input.Password
+                placeholder="设置考试密码"
+                maxLength={20}
+                style={{ width: 300 }}
+              />
+            </Form.Item>
+          )}
+
+          {/* 时间限制 */}
+          <Form.Item label="时间限制">
+            <Switch
+              checked={hasTimeLimit}
+              onChange={setHasTimeLimit}
+              checkedChildren="限定时间"
+              unCheckedChildren="不限时间"
+            />
+            <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+              开启后，只有在指定时间段内才能参加考试
+            </Text>
+          </Form.Item>
+
+          {hasTimeLimit && (
+            <Form.Item
+              label="考试时间段"
+              name="time_range"
+              rules={[
+                { required: true, message: '请选择考试时间段' },
+              ]}
+            >
+              <RangePicker
+                showTime
+                format="YYYY-MM-DD HH:mm"
+                placeholder={['开始时间', '结束时间']}
+                style={{ width: 400 }}
+                disabledDate={(current) => {
+                  // 禁用过去的日期
+                  return current && current < dayjs().startOf('day');
+                }}
+              />
+            </Form.Item>
+          )}
+
+          {/* 提交按钮 */}
+          <Form.Item style={{ marginTop: 32 }}>
+            <Space>
+              <Button onClick={() => navigate('/exams')}>
+                取消
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                icon={<SaveOutlined />}
+              >
+                创建考试
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Card>
+    </div>
+  );
+};
+
+export default ExamCreate;

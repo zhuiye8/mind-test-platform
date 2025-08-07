@@ -1,0 +1,24 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+/src/generated/prisma
+
+# Compiled output
+dist/
+
+# TypeScript
+*.tsbuildinfo
+
+# Database files
+*.sqlite
+*.db
+
+# Uploads
+uploads/
+
+# PM2 files
+ecosystem.config.js
+
+# Docker volumes
+data/

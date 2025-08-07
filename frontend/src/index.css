@@ -1,0 +1,79 @@
+/* 全局样式重置 */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+/* 移除Vite默认样式的布局冲突 */
+body {
+  background-color: #f0f2f5;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+/* 链接样式 */
+a {
+  color: #1677ff;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #4096ff;
+}
+
+/* 覆盖Ant Design的一些默认样式 */
+.ant-layout {
+  background: #f0f2f5;
+}
+
+.ant-layout-sider {
+  background: #fff !important;
+}
+
+.ant-layout-header {
+  background: #fff !important;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.ant-layout-content {
+  background: #fff !important;
+}
+
+/* 表格样式优化 */
+.ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #f5f5f5;
+}
+
+/* 卡片样式优化 */
+.ant-card {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+}
+
+/* 按钮样式优化 */
+.ant-btn-primary {
+  background: #1677ff;
+  border-color: #1677ff;
+}
+
+.ant-btn-primary:hover {
+  background: #4096ff !important;
+  border-color: #4096ff !important;
+}

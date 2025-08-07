@@ -1,0 +1,135 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 考试状态枚举 - 5状态生命周期管理
+enum ExamStatus {
+  DRAFT      // 草稿 - 考试未发布
+  PUBLISHED  // 进行中 - 考试已发布，学生可以参与
+  EXPIRED    // 已停止 - 考试被强制停止
+  SUCCESS    // 已结束 - 考试正常结束
+  ARCHIVED   // 已归档 - 考试被归档到回收站
+}
+
+// 教师表
+model Teacher {
+  id           String   @id @default(uuid())
+  teacherId    String   @unique @map("teacher_id")
+  name         String
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  papers Paper[]
+  exams  Exam[]
+
+  @@map("teachers")
+}
+
+// 试卷模板表
+model Paper {
+  id          String   @id @default(uuid())
+  teacherId   String   @map("teacher_id")
+  title       String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  teacher   Teacher    @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  questions Question[]
+  exams     Exam[]
+
+  // 数据库索引优化
+  @@index([teacherId, createdAt(sort: Desc)]) // 按教师ID和创建时间查询试卷列表
+  @@index([teacherId, title]) // 按教师ID和标题搜索
+  @@map("papers")
+}
+
+// 题目表 - MVP版本：支持条件逻辑
+model Question {
+  id               String   @id @default(uuid())
+  paperId          String   @map("paper_id")
+  questionOrder    Int      @map("question_order")
+  title            String
+  options          Json     // PostgreSQL JSONB字段
+  questionType     String   @default("single_choice") @map("question_type")
+  displayCondition Json?    @map("display_condition") // PostgreSQL JSONB字段
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  paper Paper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  // 数据库索引优化
+  @@index([paperId, questionOrder]) // 按试卷ID和题目顺序查询题目
+  @@index([paperId, createdAt(sort: Desc)]) // 按试卷ID和创建时间查询
+  @@map("questions")
+}
+
+// 考试实例表
+model Exam {
+  id                   String    @id @default(uuid())
+  paperId              String    @map("paper_id")
+  teacherId            String    @map("teacher_id")
+  publicUuid           String    @unique @default(uuid()) @map("public_uuid")
+  title                String
+  questionIdsSnapshot  Json      @map("question_ids_snapshot") // PostgreSQL JSONB字段
+  shuffleQuestions     Boolean   @default(false) @map("shuffle_questions")
+  password             String?
+  startTime            DateTime? @map("start_time")
+  endTime              DateTime? @map("end_time")
+  durationMinutes      Int       @map("duration_minutes")
+  status               ExamStatus @default(DRAFT)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  // 关系
+  paper   Paper        @relation(fields: [paperId], references: [id], onDelete: Restrict)
+  teacher Teacher      @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  results ExamResult[]
+
+  // 数据库索引优化
+  @@index([teacherId, status, createdAt(sort: Desc)]) // 按教师ID、状态和创建时间查询考试列表
+  @@index([teacherId, title]) // 按教师ID和标题搜索考试
+  @@index([status, startTime, endTime]) // 按状态和时间范围查询考试
+  @@index([status, updatedAt(sort: Desc)]) // 按状态和更新时间查询（用于归档列表）
+  @@index([teacherId, status]) // 按教师ID和状态筛选（用于状态统计）
+  @@index([publicUuid]) // 公共访问UUID查询（已有unique自带索引但明确标注）
+  @@map("exams")
+}
+
+// 考试结果表
+model ExamResult {
+  id              String    @id @default(uuid())
+  examId          String    @map("exam_id")
+  participantId   String    @map("participant_id")
+  participantName String    @map("participant_name")
+  answers         Json      // PostgreSQL JSONB字段
+  score           Int
+  ipAddress       String?   @map("ip_address")
+  startedAt       DateTime? @map("started_at")
+  submittedAt     DateTime  @default(now()) @map("submitted_at")
+
+  // 关系
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  // 数据库索引优化
+  @@index([examId, submittedAt(sort: Desc)]) // 按考试ID和提交时间查询结果列表
+  @@index([examId, score(sort: Desc)]) // 按考试ID和分数排序查询
+  @@index([examId, participantName]) // 按考试ID和参与者姓名搜索
+  @@index([submittedAt(sort: Desc)]) // 按提交时间查询所有结果
+
+  // 唯一约束：防止重复提交
+  @@unique([examId, participantId])
+  @@map("exam_results")
+}

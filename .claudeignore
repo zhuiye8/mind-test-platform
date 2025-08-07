@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build outputs  
+dist/
+build/
+*/dist/
+*/build/
+
+# Logs
+*.log
+logs/
+
+# Database files
+*.sqlite
+*.db
+
+# Environment files
+.env*
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Large media files
+*.mp4
+*.avi
+*.mov
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+
+# Documentation that might be auto-generated
+docs/api/
