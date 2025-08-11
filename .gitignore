@@ -85,7 +85,6 @@ temp/
 *.tmp
 
 # Log files that might be generated
-log
 *.log
 
 # Claude Code specific (if using)

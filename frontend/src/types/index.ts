@@ -49,29 +49,18 @@ export interface Question {
   title: string;
   options: Record<string, string>;
   question_type: 'single_choice' | 'multiple_choice' | 'text';
-  display_condition?: DisplayCondition;
+  is_required?: boolean; // 是否必填，默认为true
   created_at: string;
   updated_at: string;
 }
 
-export interface SimpleCondition {
-  question_id: string;
-  selected_option: string;
-}
-
-export interface ComplexCondition {
-  operator: 'AND' | 'OR';
-  conditions: SimpleCondition[];
-}
-
-export type DisplayCondition = SimpleCondition | ComplexCondition | null;
 
 export interface CreateQuestionForm {
   title: string;
   question_type: 'single_choice' | 'multiple_choice' | 'text';
   options: Record<string, string>;
   question_order?: number;
-  display_condition?: DisplayCondition;
+  is_required?: boolean; // 是否必填，默认为true
 }
 
 // 考试相关类型

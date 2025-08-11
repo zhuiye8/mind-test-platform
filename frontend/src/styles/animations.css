@@ -1,0 +1,140 @@
+/* 学生答题页面专用动画 */
+
+/* 页面入场动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 成功页面特效 */
+@keyframes successBounce {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(40px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.05) translateY(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes successPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 12px 24px rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 16px 32px rgba(16, 185, 129, 0.4);
+  }
+}
+
+@keyframes iconBounce {
+  from {
+    opacity: 0;
+    transform: scale(0) rotate(180deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+/* 浮动装饰元素 */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-20px) rotate(180deg);
+  }
+}
+
+/* 题目切换动画 */
+@keyframes questionSlide {
+  0% {
+    opacity: 0.7;
+    transform: translateX(20px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* Kanban 泳道动画 */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+}
+
+/* Kanban 卡片悬浮效果 */
+.kanban-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.kanban-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* 泳道过渡效果 */
+.kanban-lane {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.kanban-lane.expanded {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 加载骨架动画 */
+@keyframes shimmer {
+  0% {
+    background-position: -468px 0;
+  }
+  100% {
+    background-position: 468px 0;
+  }
+}
+
+.skeleton-loading {
+  animation: shimmer 1.2s ease-in-out infinite;
+  background: linear-gradient(90deg, #f2f2f2 25%, #e6e6e6 50%, #f2f2f2 75%);
+  background-size: 800px 104px;
+}

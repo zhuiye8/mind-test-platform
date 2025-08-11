@@ -64,7 +64,7 @@ const Layout: React.FC = () => {
   };
 
   return (
-    <AntLayout style={{ minHeight: '100vh' }}>
+    <AntLayout style={{ height: '100vh', overflow: 'hidden' }}>
       {/* 侧边栏 */}
       <Sider
         trigger={null}
@@ -73,6 +73,12 @@ const Layout: React.FC = () => {
         style={{
           background: '#fff',
           boxShadow: '2px 0 6px rgba(0, 21, 41, 0.08)',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          height: '100vh',
+          zIndex: 100,
         }}
       >
         {/* Logo区域 */}
@@ -103,7 +109,7 @@ const Layout: React.FC = () => {
         />
       </Sider>
 
-      <AntLayout>
+      <AntLayout style={{ marginLeft: collapsed ? 80 : 200, height: '100vh', display: 'flex', flexDirection: 'column' }}>
         {/* 顶部栏 */}
         <Header style={{
           background: '#fff',
@@ -112,6 +118,12 @@ const Layout: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'space-between',
           borderBottom: '1px solid #f0f0f0',
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          left: collapsed ? 80 : 200,
+          zIndex: 99,
+          transition: 'left 0.2s ease',
         }}>
           {/* 折叠按钮 */}
           <Button
@@ -141,13 +153,26 @@ const Layout: React.FC = () => {
 
         {/* 主内容区 */}
         <Content style={{
-          margin: 24,
+          flex: 1,
+          marginTop: 64,
           padding: 24,
-          background: '#fff',
-          borderRadius: 8,
-          minHeight: 280,
+          background: '#f5f5f5',
+          overflow: 'hidden',
+          height: 'calc(100vh - 64px)',
+          display: 'flex',
+          flexDirection: 'column',
         }}>
-          <Outlet />
+          <div style={{
+            background: '#fff',
+            borderRadius: 8,
+            padding: 24,
+            flex: 1,
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <Outlet />
+          </div>
         </Content>
       </AntLayout>
     </AntLayout>

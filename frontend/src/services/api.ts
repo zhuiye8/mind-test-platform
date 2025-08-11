@@ -107,6 +107,16 @@ export const questionApi = {
   delete: (questionId: string): Promise<ApiResponse<void>> => {
     return api.delete(`/teacher/papers/questions/${questionId}`);
   },
+
+  // 批量重排题目顺序
+  batchReorder: (paperId: string, questionOrders: Array<{ id: string; order: number }>): Promise<ApiResponse<void>> => {
+    // 转换参数名以匹配后端期望的格式
+    const question_orders = questionOrders.map(item => ({
+      id: item.id,
+      question_order: item.order
+    }));
+    return api.put(`/teacher/papers/${paperId}/questions/batch-reorder`, { question_orders });
+  },
 };
 
 // 考试相关API

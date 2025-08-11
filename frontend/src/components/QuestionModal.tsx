@@ -10,6 +10,7 @@ import {
   Typography,
   Divider,
   message,
+  Checkbox,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { Question, CreateQuestionForm } from '../types';
@@ -43,6 +44,7 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
         form.setFieldsValue({
           title: question.title,
           question_type: question.question_type,
+          is_required: question.is_required !== false, // 默认为true，除非明确设置为false
         });
         
         // 转换选项格式
@@ -110,6 +112,8 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
         ),
         // 如果是编辑模式，使用现有顺序；如果是新建，使用默认顺序
         question_order: question?.question_order || 1,
+        // 添加必填字段
+        is_required: values.is_required !== false, // 默认为true
       };
 
       await onSubmit(submitData);
@@ -177,6 +181,21 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
             <Option value="multiple_choice">多选题</Option>
             <Option value="text">文本题</Option>
           </Select>
+        </Form.Item>
+
+        {/* 必填设置 */}
+        <Form.Item
+          name="is_required"
+          valuePropName="checked"
+          initialValue={true}
+        >
+          <Checkbox>
+            <Text strong style={{ color: '#ff4d4f' }}>* </Text>
+            <Text>此题目为必填题目</Text>
+            <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+              （学生必须回答此题目才能提交）
+            </Text>
+          </Checkbox>
         </Form.Item>
 
         {/* 选项设置（仅选择题显示） */}

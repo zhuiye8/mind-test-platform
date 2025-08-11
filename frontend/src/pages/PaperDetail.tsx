@@ -5,34 +5,42 @@ import {
   Typography,
   Button,
   Space,
-  Spin,
   Empty,
   message,
-  Descriptions,
-  Table,
   Tag,
-  Popconfirm,
   Tooltip,
   Input,
   Select,
   Modal,
+  Row,
+  Col,
+  Alert,
+  Divider,
+  Table,
+  InputNumber,
+  Spin,
 } from 'antd';
 import {
   ArrowLeftOutlined,
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  SortAscendingOutlined,
   SearchOutlined,
-  FilterOutlined,
   CopyOutlined,
+  FileTextOutlined,
+  BarChartOutlined,
+  ExperimentOutlined,
+  ClockCircleOutlined,
+  CheckCircleOutlined,
+  SettingOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
 import { paperApi, questionApi } from '../services/api';
 import type { Paper, Question, CreateQuestionForm } from '../types';
+import type { ColumnsType } from 'antd/es/table';
 import QuestionModal from '../components/QuestionModal';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 const PaperDetail: React.FC = () => {
   const { paperId } = useParams<{ paperId: string }>();
@@ -44,10 +52,8 @@ const PaperDetail: React.FC = () => {
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [selectedRows, setSelectedRows] = useState<Question[]>([]);
   const [modal, contextHolder] = Modal.useModal();
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [updating, setUpdating] = useState<string | null>(null); // 正在更新排序的题目ID
 
   useEffect(() => {
     if (paperId) {
@@ -88,6 +94,7 @@ const PaperDetail: React.FC = () => {
       if (editingQuestion && editingQuestion.id) {
         // 更新题目
         await questionApi.update(editingQuestion.id, data);
+        message.success('题目更新成功');
       } else {
         // 创建题目 - 自动计算题目顺序
         const maxOrder = questions.length > 0 
@@ -100,6 +107,7 @@ const PaperDetail: React.FC = () => {
         };
         
         await questionApi.create(paperId, createData);
+        message.success('题目创建成功');
       }
       
       // 重新加载题目列表
@@ -144,31 +152,6 @@ const PaperDetail: React.FC = () => {
     setEditingQuestion(null);
   };
 
-  // 批量删除题目
-  const handleBatchDelete = () => {
-    if (selectedRows.length === 0) {
-      message.warning('请选择要删除的题目');
-      return;
-    }
-
-    modal.confirm({
-      title: `确定删除这 ${selectedRows.length} 道题目吗？`,
-      content: '删除后将无法恢复，相关的条件逻辑也会失效。',
-      onOk: async () => {
-        try {
-          // 批量删除题目
-          await Promise.all(selectedRows.map(q => questionApi.delete(q.id)));
-          message.success(`成功删除 ${selectedRows.length} 道题目`);
-          setSelectedRows([]);
-          await loadPaperDetail();
-        } catch (error) {
-          console.error('批量删除失败:', error);
-          message.error('批量删除失败');
-        }
-      },
-    });
-  };
-
   // 复制题目
   const handleCopyQuestion = (question: Question) => {
     // 创建题目副本
@@ -183,27 +166,134 @@ const PaperDetail: React.FC = () => {
     setQuestionModalVisible(true);
   };
 
-  // 过滤题目
-  const getFilteredQuestions = (): Question[] => {
-    return questions.filter(question => {
-      // 搜索过滤
-      const matchSearch = question.title.toLowerCase().includes(searchText.toLowerCase());
+  // 单个题目排序更新
+  const handleQuestionOrderChange = async (questionId: string, newOrder: number) => {
+    // 验证输入
+    if (!newOrder || isNaN(newOrder) || !Number.isInteger(newOrder)) {
+      message.warning('请输入有效的整数');
+      return;
+    }
+
+    if (newOrder < 1 || newOrder > questions.length) {
+      message.warning(`排序号必须在1到${questions.length}之间`);
+      return;
+    }
+
+    // 防止重复操作
+    if (updating === questionId) return;
+
+    // 找到当前题目
+    const currentQuestion = questions.find(q => q.id === questionId);
+    if (!currentQuestion) {
+      message.error('题目不存在');
+      return;
+    }
+
+    // 如果没有变化，直接返回
+    if (currentQuestion.question_order === newOrder) {
+      return;
+    }
+
+    try {
+      setUpdating(questionId);
+
+      // 找到目标位置的题目
+      const targetQuestion = questions.find(q => q.question_order === newOrder);
+
+      // 乐观更新：立即更新UI
+      const updatedQuestions = [...questions];
       
-      // 类型过滤
-      const matchType = typeFilter === 'all' || question.question_type === typeFilter;
-      
-      return matchSearch && matchType;
+      if (targetQuestion) {
+        // 交换两个题目的排序号
+        const currentIndex = updatedQuestions.findIndex(q => q.id === questionId);
+        const targetIndex = updatedQuestions.findIndex(q => q.id === targetQuestion.id);
+        
+        updatedQuestions[currentIndex] = { ...currentQuestion, question_order: newOrder };
+        updatedQuestions[targetIndex] = { ...targetQuestion, question_order: currentQuestion.question_order };
+        
+        message.success(`题目 "${currentQuestion.title.substring(0, 20)}..." 已与排序号${newOrder}的题目交换位置`);
+      } else {
+        // 直接更新排序号（不应该发生，但以防万一）
+        const currentIndex = updatedQuestions.findIndex(q => q.id === questionId);
+        updatedQuestions[currentIndex] = { ...currentQuestion, question_order: newOrder };
+        
+        message.success(`题目排序已更新为${newOrder}`);
+      }
+
+      setQuestions(updatedQuestions);
+
+      // 准备批量更新数据
+      const questionOrders = updatedQuestions.map((q) => ({
+        id: q.id,
+        order: q.question_order
+      }));
+
+      // 调用后端API持久化
+      await questionApi.batchReorder(paperId!, questionOrders);
+    } catch (error) {
+      console.error('更新排序失败:', error);
+      const errorMsg = error instanceof Error ? error.message : '未知错误';
+      message.error(`更新排序失败: ${errorMsg}`);
+      // 失败时重新加载数据恢复状态
+      await loadPaperDetail();
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  // 自动重排序号（将所有题目按顺序重新编号1,2,3...）
+  const handleAutoReorder = async () => {
+    try {
+      setUpdating('batch'); // 使用特殊标识表示批量操作
+
+      // 按当前显示顺序重新分配序号
+      const sortedQuestions = [...questions].sort((a, b) => a.question_order - b.question_order);
+      const updatedQuestions = sortedQuestions.map((q, index) => ({
+        ...q,
+        question_order: index + 1
+      }));
+
+      setQuestions(updatedQuestions);
+
+      // 准备批量更新数据
+      const questionOrders = updatedQuestions.map((q) => ({
+        id: q.id,
+        order: q.question_order
+      }));
+
+      // 调用后端API
+      await questionApi.batchReorder(paperId!, questionOrders);
+      message.success('题目序号已重新排序');
+    } catch (error) {
+      console.error('重排序失败:', error);
+      message.error('重排序失败，请重试');
+      await loadPaperDetail();
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  // 显示删除确认对话框
+  const showDeleteConfirm = (question: Question) => {
+    modal.confirm({
+      title: '确定删除这道题目吗？',
+      icon: <ExclamationCircleOutlined />,
+      content: (
+        <div>
+          <p><strong>题目标题：</strong>{question.title}</p>
+          <p style={{ color: '#ff4d4f', marginTop: '16px' }}>
+            删除后将无法恢复！
+          </p>
+        </div>
+      ),
+      okText: '确定删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => handleDeleteQuestion(question.id),
     });
   };
 
-  // 行选择配置
-  const rowSelection = {
-    selectedRowKeys: selectedRows.map(q => q.id),
-    onChange: (_selectedRowKeys: React.Key[], selectedRows: Question[]) => {
-      setSelectedRows(selectedRows);
-    },
-  };
-
+  // 题目类型显示
   const getQuestionTypeText = (type: string) => {
     switch (type) {
       case 'single_choice': return '单选题';
@@ -222,94 +312,115 @@ const PaperDetail: React.FC = () => {
     }
   };
 
+  // 过滤题目
+  const getFilteredQuestions = (): Question[] => {
+    return questions.filter(question => {
+      // 搜索过滤
+      const matchSearch = question.title.toLowerCase().includes(searchText.toLowerCase());
+      
+      // 类型过滤
+      const matchType = typeFilter === 'all' || question.question_type === typeFilter;
+      
+      return matchSearch && matchType;
+    });
+  };
+
+  // 表格列配置
   const columns: ColumnsType<Question> = [
     {
-      title: '序号',
+      title: '排序',
       dataIndex: 'question_order',
       key: 'question_order',
-      width: 80,
+      width: 100,
       sorter: (a, b) => a.question_order - b.question_order,
-    },
-    {
-      title: '题目内容',
-      dataIndex: 'title',
-      key: 'title',
-      ellipsis: true,
-    },
-    {
-      title: '题目类型',
-      dataIndex: 'question_type',
-      key: 'question_type',
-      width: 100,
-      render: (type: string) => (
-        <Tag color={getQuestionTypeColor(type)}>
-          {getQuestionTypeText(type)}
-        </Tag>
+      defaultSortOrder: 'ascend',
+      render: (text: number, record: Question) => (
+        <div style={{ position: 'relative' }}>
+          <InputNumber
+            min={1}
+            max={questions.length}
+            value={text}
+            size="small"
+            style={{ width: 70 }}
+            disabled={updating === record.id}
+            onChange={(value) => handleQuestionOrderChange(record.id, value as number)}
+            placeholder="序号"
+          />
+          {updating === record.id && (
+            <div style={{ 
+              position: 'absolute', 
+              top: '50%', 
+              left: '50%', 
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'none'
+            }}>
+              <Spin size="small" />
+            </div>
+          )}
+        </div>
       ),
     },
     {
-      title: '选项数量',
-      key: 'options_count',
-      width: 100,
-      render: (_, record: Question) => (
-        <Text>{Object.keys(record.options || {}).length} 个</Text>
+      title: '题目信息',
+      key: 'info',
+      render: (_, record) => (
+        <div>
+          <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Tag color={getQuestionTypeColor(record.question_type)}>
+              {getQuestionTypeText(record.question_type)}
+            </Tag>
+            {record.is_required !== false && (
+              <Tag color="red">必填</Tag>
+            )}
+          </div>
+          <div style={{ fontWeight: 500, fontSize: '14px', marginBottom: '4px' }}>
+            {record.title}
+          </div>
+          <div style={{ fontSize: '12px', color: '#999' }}>
+            选项数量：{Object.keys(record.options || {}).length}
+          </div>
+        </div>
       ),
     },
     {
-      title: '条件显示',
-      key: 'has_condition',
-      width: 100,
-      render: (_, record: Question) => (
-        record.display_condition ? 
-          <Tag color="purple">有条件</Tag> : 
-          <Tag>无条件</Tag>
-      ),
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 180,
+      render: (text) => new Date(text).toLocaleString(),
     },
     {
       title: '操作',
       key: 'actions',
-      width: 240,
-      render: (_, record: Question) => (
-        <Space size="small" wrap>
+      width: 200,
+      fixed: 'right',
+      render: (_, record) => (
+        <Space>
           <Tooltip title="编辑题目">
             <Button
-              type="link"
+              type="text"
               size="small"
               icon={<EditOutlined />}
               onClick={() => handleEditQuestion(record)}
-            >
-              编辑
-            </Button>
+            />
           </Tooltip>
           <Tooltip title="复制题目">
             <Button
-              type="link"
+              type="text"
               size="small"
               icon={<CopyOutlined />}
               onClick={() => handleCopyQuestion(record)}
-            >
-              复制
-            </Button>
+            />
           </Tooltip>
-          <Popconfirm
-            title="确定删除这道题目吗？"
-            description="删除后将无法恢复，相关的条件逻辑也会失效。"
-            onConfirm={() => handleDeleteQuestion(record.id)}
-            okText="删除"
-            cancelText="取消"
-            okType="danger"
-          >
-            <Tooltip title="删除题目">
-              <Button
-                type="link"
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-              >
-                删除
-              </Button>
-            </Tooltip>
-          </Popconfirm>
+          <Tooltip title="删除题目">
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => showDeleteConfirm(record)}
+            />
+          </Tooltip>
         </Space>
       ),
     },
@@ -317,172 +428,259 @@ const PaperDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '50px 0' }}>
-        <Spin size="large" />
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center' 
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 16, fontSize: '16px', color: '#666' }}>
+            加载中...
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!paper) {
     return (
-      <Empty
-        description="试卷不存在或已被删除"
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-      >
-        <Button type="primary" onClick={() => navigate('/papers')}>
-          返回试卷列表
-        </Button>
-      </Empty>
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center' 
+      }}>
+        <Empty
+          description="试卷不存在或已被删除"
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        >
+          <Button 
+            type="primary" 
+            size="large"
+            onClick={() => navigate('/papers')}
+          >
+            返回试卷列表
+          </Button>
+        </Empty>
+      </div>
     );
   }
+
+  // 计算统计数据
+  const statistics = {
+    totalQuestions: questions.length,
+    singleChoice: questions.filter(q => q.question_type === 'single_choice').length,
+    multipleChoice: questions.filter(q => q.question_type === 'multiple_choice').length,
+    textQuestions: questions.filter(q => q.question_type === 'text').length,
+    requiredQuestions: questions.filter(q => q.is_required !== false).length,
+  };
 
   return (
     <div>
       {/* 重要：必须添加contextHolder才能显示Modal */}
       {contextHolder}
-      {/* 导航栏 */}
-      <div style={{ marginBottom: 24 }}>
-        <Space>
-          <Button 
-            icon={<ArrowLeftOutlined />} 
-            onClick={() => navigate('/papers')}
-          >
-            返回
-          </Button>
-          <Title level={2} style={{ margin: 0 }}>
-            {paper.title}
-          </Title>
-        </Space>
-      </div>
-
-      {/* 试卷信息 */}
-      <Card style={{ marginBottom: 24 }}>
-        <Descriptions title="试卷信息" column={2}>
-          <Descriptions.Item label="试卷名称">
-            {paper.title}
-          </Descriptions.Item>
-          <Descriptions.Item label="创建时间">
-            {new Date(paper.created_at).toLocaleString()}
-          </Descriptions.Item>
-          <Descriptions.Item label="题目数量">
-            {questions.length} 题
-          </Descriptions.Item>
-          <Descriptions.Item label="考试次数">
-            {paper.exam_count} 次
-          </Descriptions.Item>
-          <Descriptions.Item label="试卷描述" span={2}>
-            {paper.description || '暂无描述'}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
-
-      {/* 题目列表 */}
-      <Card
-        title={
-          <Space>
-            <span>题目列表</span>
-            <Text type="secondary">({getFilteredQuestions().length} / {questions.length} 题)</Text>
-          </Space>
-        }
-        extra={
-          <Space>
-            <Tooltip title="对题目按序号排序">
-              <Button
-                icon={<SortAscendingOutlined />}
-                onClick={() => {
-                  const sorted = [...questions].sort((a, b) => a.question_order - b.question_order);
-                  setQuestions(sorted);
-                }}
-              >
-                排序
-              </Button>
-            </Tooltip>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleCreateQuestion}
-            >
-              添加题目
-            </Button>
-          </Space>
-        }
-      >
-        {/* 搜索和筛选工具栏 */}
-        <div style={{ marginBottom: 16 }}>
-          <Space wrap>
-            <Input
-              placeholder="搜索题目内容..."
-              prefix={<SearchOutlined />}
-              value={searchText}
-              onChange={(e) => {
-                setSearchText(e.target.value);
-                setCurrentPage(1); // 搜索时重置到第一页
-              }}
-              style={{ width: 250 }}
-              allowClear
-            />
-            <Select
-              placeholder="筛选题目类型"
-              value={typeFilter}
-              onChange={(value) => {
-                setTypeFilter(value);
-                setCurrentPage(1); // 筛选时重置到第一页
-              }}
-              style={{ width: 150 }}
-              suffixIcon={<FilterOutlined />}
-            >
-              <Select.Option value="all">全部类型</Select.Option>
-              <Select.Option value="single_choice">单选题</Select.Option>
-              <Select.Option value="multiple_choice">多选题</Select.Option>
-              <Select.Option value="text">文本题</Select.Option>
-            </Select>
+      
+      <div>
+        {/* Hero区域 - 横向分布优化 */}
+        <Card style={{ marginBottom: 24 }}>
+          <Row align="middle" justify="space-between" gutter={[24, 16]}>
+            {/* 左侧内容区 */}
+            <Col flex="1">
+              <div>
+                {/* 第一行：导航、标题和标签页类型 */}
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                  <Button 
+                    icon={<ArrowLeftOutlined />} 
+                    onClick={() => navigate('/papers')}
+                    style={{ marginRight: 16 }}
+                  >
+                    返回
+                  </Button>
+                  <Title level={1} style={{ margin: 0, fontSize: '1.8rem', marginRight: 16 }}>
+                    {paper.title}
+                  </Title>
+                  <Tag color="processing">试卷详情</Tag>
+                </div>
+                
+                {/* 第二行：描述 */}
+                {paper.description && (
+                  <Typography.Text type="secondary" style={{ fontSize: '14px', display: 'block', marginBottom: 12 }}>
+                    {paper.description}
+                  </Typography.Text>
+                )}
+                
+                {/* 第三行：统计标签 */}
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: 12 }}>
+                  <Tag color="magenta" style={{ padding: '2px 8px', fontSize: '13px', fontWeight: 500 }}>
+                    <FileTextOutlined /> 总计 {statistics.totalQuestions} 题
+                  </Tag>
+                  <Tag color="cyan" style={{ padding: '2px 8px', fontSize: '13px', fontWeight: 500 }}>
+                    <CheckCircleOutlined /> 单选 {statistics.singleChoice}
+                  </Tag>
+                  <Tag color="lime" style={{ padding: '2px 8px', fontSize: '13px', fontWeight: 500 }}>
+                    <BarChartOutlined /> 多选 {statistics.multipleChoice}
+                  </Tag>
+                  <Tag color="red" style={{ padding: '2px 8px', fontSize: '13px', fontWeight: 500 }}>
+                    <ExclamationCircleOutlined /> 必填 {statistics.requiredQuestions}
+                  </Tag>
+                  {statistics.textQuestions > 0 && (
+                    <Tag color="purple" style={{ padding: '2px 8px', fontSize: '13px', fontWeight: 500 }}>
+                      <EditOutlined /> 文本 {statistics.textQuestions}
+                    </Tag>
+                  )}
+                  <Divider type="vertical" />
+                  <Typography.Text type="secondary" style={{ fontSize: '13px' }}>
+                    <ClockCircleOutlined /> {new Date(paper.created_at).toLocaleDateString()}
+                  </Typography.Text>
+                  {paper.exam_count > 0 && (
+                    <>
+                      <Divider type="vertical" />
+                      <Typography.Text type="secondary" style={{ fontSize: '13px' }}>
+                        <ExperimentOutlined /> {paper.exam_count} 次考试
+                      </Typography.Text>
+                    </>
+                  )}
+                </div>
+                
+                {/* 第四行：操作提示 */}
+                <Alert
+                  message="简洁的题目管理界面，支持题目的增删改查。必填题目将在学生答题时进行验证。"
+                  type="info"
+                  showIcon
+                  style={{ fontSize: '13px' }}
+                />
+              </div>
+            </Col>
             
-            {/* 批量操作按钮 */}
-            {selectedRows.length > 0 && (
+            {/* 右侧操作区 */}
+            <Col>
               <Space>
-                <Text type="secondary">已选择 {selectedRows.length} 项</Text>
-                <Button
-                  danger
-                  size="small"
-                  icon={<DeleteOutlined />}
-                  onClick={handleBatchDelete}
+                <Button 
+                  type="primary" 
+                  icon={<PlusOutlined />}
+                  size="large"
+                  onClick={handleCreateQuestion}
                 >
-                  批量删除
+                  添加题目
+                </Button>
+                <Button 
+                  icon={<SettingOutlined />}
+                  size="large"
+                >
+                  试卷设置
                 </Button>
               </Space>
-            )}
-          </Space>
-        </div>
-        <Table
-          columns={columns}
-          dataSource={getFilteredQuestions()}
-          rowKey="id"
-          rowSelection={rowSelection}
-          pagination={{
-            current: currentPage,
-            pageSize: pageSize,
-            total: getFilteredQuestions().length,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 道题目`,
-            onChange: (page, size) => {
-              setCurrentPage(page);
-              if (size !== pageSize) {
-                setPageSize(size);
-                setCurrentPage(1); // 改变页面大小时回到第一页
-              }
-            },
-          }}
-          locale={{ 
-            emptyText: (
-              <Empty
-                description={searchText || typeFilter !== 'all' ? '没有符合条件的题目' : '暂无题目，点击上方按钮添加题目'}
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 搜索筛选区域 */}
+        <Card style={{ marginBottom: 24 }}>
+          <Row gutter={16} align="middle">
+            <Col span={8}>
+              <Input
+                placeholder="搜索题目内容..."
+                prefix={<SearchOutlined />}
+                value={searchText}
+                onChange={(e) => {
+                  setSearchText(e.target.value);
+                }}
+                allowClear
+                size="large"
               />
-            )
-          }}
-        />
-      </Card>
+            </Col>
+            <Col span={6}>
+              <Select
+                placeholder="筛选题目类型"
+                value={typeFilter}
+                onChange={(value) => {
+                  setTypeFilter(value);
+                }}
+                style={{ width: '100%' }}
+                size="large"
+              >
+                <Select.Option value="all">全部类型</Select.Option>
+                <Select.Option value="single_choice">单选题</Select.Option>
+                <Select.Option value="multiple_choice">多选题</Select.Option>
+                <Select.Option value="text">文本题</Select.Option>
+              </Select>
+            </Col>
+            <Col span={10}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography.Text type="secondary">
+                  显示 {getFilteredQuestions().length} / {questions.length} 题
+                </Typography.Text>
+                <Button
+                  type="primary" 
+                  icon={<PlusOutlined />}
+                  onClick={handleCreateQuestion}
+                >
+                  添加题目
+                </Button>
+              </div>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 题目列表表格 */}
+        <Card 
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>题目列表</span>
+              {questions.length > 0 && (
+                <Space>
+                  <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+                    📝 直接修改排序号可调整题目顺序
+                  </Typography.Text>
+                  <Button 
+                    size="small" 
+                    loading={updating === 'batch'}
+                    disabled={!!updating}
+                    onClick={handleAutoReorder}
+                  >
+                    自动重排序号
+                  </Button>
+                </Space>
+              )}
+            </div>
+          }
+        >
+          {questions.length === 0 ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="暂无题目数据"
+              style={{ padding: '48px 0' }}
+            >
+              <Button 
+                type="primary" 
+                icon={<PlusOutlined />}
+                size="large"
+                onClick={handleCreateQuestion}
+              >
+                立即添加题目
+              </Button>
+            </Empty>
+          ) : (
+            <Table
+              columns={columns}
+              dataSource={getFilteredQuestions()}
+              rowKey="id"
+              scroll={{ x: 800 }}
+              loading={!!updating}
+              pagination={{
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total, range) => 
+                  `显示 ${range[0]}-${range[1]} 条，共 ${total} 条记录`,
+                pageSizeOptions: ['10', '20', '50'],
+                defaultPageSize: 10,
+              }}
+            />
+          )}
+        </Card>
+      </div>
 
       {/* 题目创建/编辑模态框 */}
       <QuestionModal
