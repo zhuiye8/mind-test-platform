@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -51,6 +51,7 @@ const { TextArea } = Input;
 interface ExamInfo {
   id: string;
   title: string;
+  description?: string; // 试卷描述
   duration_minutes: number;
   password_required: boolean; // 修复字段名，与后端API保持一致
   questions?: Question[]; // questions字段可能为undefined（需要密码时不返回）
@@ -72,12 +73,13 @@ const StudentExam: React.FC = () => {
   // 考试状态管理
   const [exam, setExam] = useState<ExamInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentStep, setCurrentStep] = useState<'password' | 'info' | 'exam' | 'completed'>('password');
+  const [currentStep, setCurrentStep] = useState<'password' | 'info' | 'description' | 'exam' | 'completed'>('password');
   const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [examStartTime, setExamStartTime] = useState<Date | null>(null); // 答题实际开始时间
   
   // 沉浸式UI状态
   const [showQuestionNav, setShowQuestionNav] = useState(false);
@@ -202,7 +204,14 @@ const StudentExam: React.FC = () => {
       if (response.success && response.data?.canSubmit) {
         // 没有重复提交，可以继续
         setStudentInfo(values);
-        setCurrentStep('exam');
+        // 检查是否有试卷描述，如果有则显示描述确认页
+        if (exam?.description && exam.description.trim()) {
+          setCurrentStep('description');
+        } else {
+          setCurrentStep('exam');
+          // 直接开始答题时也记录开始时间
+          setExamStartTime(new Date());
+        }
       } else {
         // API返回success:false，不应该到这里，但以防万一
         message.error('您已经提交过本次考试，请勿重复提交');
@@ -284,6 +293,13 @@ const StudentExam: React.FC = () => {
     }
   };
 
+  // 从描述页开始答题
+  const handleStartExam = () => {
+    setCurrentStep('exam');
+    // 记录答题实际开始时间（精确到秒）
+    setExamStartTime(new Date());
+  };
+
   // 实际提交到服务器
   const submitToServer = async () => {
     if (!studentInfo || !examUuid) return;
@@ -294,6 +310,8 @@ const StudentExam: React.FC = () => {
         student_id: studentInfo.student_id,
         student_name: studentInfo.student_name,
         answers: answers,
+        // 传递实际答题开始时间（精确到秒）
+        started_at: examStartTime?.toISOString(),
       });
 
       if (response.success) {
@@ -382,7 +400,7 @@ const StudentExam: React.FC = () => {
                   }}
                 >
                   <Radio value={key} style={{ display: 'flex', alignItems: 'flex-start' }}>
-                    <span style={{ marginLeft: 12, fontSize: '16px', lineHeight: '1.6' }}>{text}</span>
+                    <span style={{ marginLeft: 12, fontSize: '16px', lineHeight: '1.6' }}>{typeof text === 'string' ? text : text?.text || text?.label || ''}</span>
                   </Radio>
                 </div>
               ))}
@@ -420,7 +438,7 @@ const StudentExam: React.FC = () => {
                   }}
                 >
                   <Checkbox value={key} style={{ display: 'flex', alignItems: 'flex-start' }}>
-                    <span style={{ marginLeft: 12, fontSize: '16px', lineHeight: '1.6' }}>{text}</span>
+                    <span style={{ marginLeft: 12, fontSize: '16px', lineHeight: '1.6' }}>{typeof text === 'string' ? text : text?.text || text?.label || ''}</span>
                   </Checkbox>
                 </div>
               ))}
@@ -461,6 +479,23 @@ const StudentExam: React.FC = () => {
         return <Text type="secondary">不支持的题目类型</Text>;
     }
   };
+
+  // 计算真实答题进度 - 必须在所有条件返回之前定义Hook
+  const getProgress = useCallback(() => {
+    const visibleQuestions = getVisibleQuestions();
+    if (visibleQuestions.length === 0) return 0;
+    
+    // 计算已回答题目的比例
+    const answeredCount = visibleQuestions.filter(q => {
+      const answer = answers[q.id];
+      if (answer === undefined || answer === null) return false;
+      if (typeof answer === 'string' && answer.trim() === '') return false;
+      if (Array.isArray(answer) && answer.length === 0) return false;
+      return true;
+    }).length;
+    
+    return (answeredCount / visibleQuestions.length) * 100;
+  }, [exam, answers]);
 
   if (loading) {
     return (
@@ -533,24 +568,7 @@ const StudentExam: React.FC = () => {
 
   const allQuestions = getVisibleQuestions();
   const currentQuestion = allQuestions[currentQuestionIndex];
-  
-  // 简化进度计算
-  // const getProgress = useCallback(() => {
-  //   if (allQuestions.length === 0) return 0;
-    
-  //   // 计算已回答题目的比例
-  //   const answeredCount = allQuestions.filter(q => {
-  //     const answer = answers[q.id];
-  //     if (answer === undefined || answer === null) return false;
-  //     if (typeof answer === 'string' && answer.trim() === '') return false;
-  //     if (Array.isArray(answer) && answer.length === 0) return false;
-  //     return true;
-  //   }).length;
-    
-  //   return (answeredCount / allQuestions.length) * 100;
-  // }, [allQuestions, answers]);
-  
-  const progress = 100;
+  const progress = getProgress();
 
   return (
     <div>
@@ -883,6 +901,194 @@ const StudentExam: React.FC = () => {
                   </Button>
                 </Form.Item>
               </Form>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* 描述确认步骤 - 沉浸式设计 */}
+      {currentStep === 'description' && exam && (
+        <div style={{
+          minHeight: '100vh',
+          background: `
+            linear-gradient(135deg, 
+              rgba(245, 158, 11, 0.08) 0%, 
+              rgba(79, 70, 229, 0.06) 50%, 
+              rgba(245, 158, 11, 0.08) 100%
+            ),
+            radial-gradient(circle at 40% 30%, rgba(245, 158, 11, 0.12) 0%, transparent 60%),
+            radial-gradient(circle at 60% 70%, rgba(79, 70, 229, 0.12) 0%, transparent 60%)
+          `,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px'
+        }}>
+          <div style={{
+            width: '100%',
+            maxWidth: '720px',
+            animation: 'fadeInUp 0.6s ease-out 0.3s both'
+          }}>
+            <Card 
+              style={{ 
+                boxShadow: `
+                  0 20px 40px rgba(0, 0, 0, 0.08),
+                  0 8px 16px rgba(0, 0, 0, 0.04),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.6)
+                `,
+                borderRadius: '24px',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                background: 'rgba(255, 255, 255, 0.95)',
+                backdropFilter: 'blur(20px)'
+              }}
+              bodyStyle={{ padding: '48px' }}
+            >
+              {/* 头部区域 */}
+              <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '80px',
+                  height: '80px',
+                  borderRadius: '20px',
+                  background: 'linear-gradient(135deg, #F59E0B 0%, #4F46E5 100%)',
+                  marginBottom: '24px',
+                  boxShadow: '0 8px 20px rgba(245, 158, 11, 0.3)'
+                }}>
+                  <BulbOutlined style={{ fontSize: '36px', color: 'white' }} />
+                </div>
+                <Title level={2} style={{ margin: '0 0 8px 0', fontSize: '24px', fontWeight: '700' }}>
+                  {exam.title}
+                </Title>
+                <Text type="secondary" style={{ fontSize: '16px', lineHeight: '1.5' }}>
+                  📋 请仔细阅读以下说明，了解测试要求后开始答题
+                </Text>
+              </div>
+
+              {/* 考试描述内容 */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(79, 70, 229, 0.05))',
+                borderRadius: '16px',
+                padding: '32px',
+                marginBottom: '32px',
+                border: '1px solid rgba(245, 158, 11, 0.15)'
+              }}>
+                <div style={{
+                  fontSize: '16px',
+                  lineHeight: '1.8',
+                  color: '#374151',
+                  textAlign: 'left'
+                }}>
+                  {exam.description}
+                </div>
+              </div>
+
+              {/* 测试提醒信息 */}
+              <div style={{
+                background: 'rgba(79, 70, 229, 0.05)',
+                borderRadius: '12px',
+                padding: '20px',
+                marginBottom: '32px',
+                border: '1px solid rgba(79, 70, 229, 0.1)'
+              }}>
+                <Row gutter={[16, 12]}>
+                  <Col span={8}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#4F46E5', marginBottom: '4px' }}>
+                        {exam.questions?.length || 0}
+                      </div>
+                      <Text type="secondary" style={{ fontSize: '12px' }}>题目总数</Text>
+                    </div>
+                  </Col>
+                  <Col span={8}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#F59E0B', marginBottom: '4px' }}>
+                        {exam.duration_minutes}
+                      </div>
+                      <Text type="secondary" style={{ fontSize: '12px' }}>限时(分钟)</Text>
+                    </div>
+                  </Col>
+                  <Col span={8}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#10B981', marginBottom: '4px' }}>
+                        {studentInfo?.student_name}
+                      </div>
+                      <Text type="secondary" style={{ fontSize: '12px' }}>参试学生</Text>
+                    </div>
+                  </Col>
+                </Row>
+              </div>
+
+              {/* 重要提示 */}
+              <Alert
+                message="重要提示"
+                description={
+                  <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <CheckCircleOutlined style={{ color: '#10B981', marginRight: '6px' }} />
+                      请确保您已仔细阅读上述说明内容
+                    </div>
+                    <div style={{ marginBottom: '8px' }}>
+                      <ClockCircleOutlined style={{ color: '#F59E0B', marginRight: '6px' }} />
+                      测试开始后将自动计时，请合理安排答题时间
+                    </div>
+                    <div>
+                      <HeartOutlined style={{ color: '#EF4444', marginRight: '6px' }} />
+                      请诚实作答，测试结果仅用于心理健康评估
+                    </div>
+                  </div>
+                }
+                type="info"
+                showIcon
+                style={{ marginBottom: '32px' }}
+              />
+
+              {/* 操作按钮 */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
+                <Button 
+                  size="large"
+                  onClick={() => setCurrentStep('info')}
+                  style={{
+                    borderRadius: '12px',
+                    height: '52px',
+                    minWidth: '120px',
+                    fontSize: '16px'
+                  }}
+                >
+                  <ArrowLeftOutlined />
+                  返回上一步
+                </Button>
+                <Button 
+                  type="primary" 
+                  size="large"
+                  onClick={handleStartExam}
+                  style={{ 
+                    borderRadius: '12px',
+                    height: '52px',
+                    minWidth: '160px',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    background: 'linear-gradient(135deg, #F59E0B 0%, #4F46E5 100%)',
+                    border: 'none',
+                    boxShadow: '0 6px 16px rgba(245, 158, 11, 0.3)',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(245, 158, 11, 0.4)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(245, 158, 11, 0.3)';
+                  }}
+                >
+                  <Space>
+                    <RocketOutlined />
+                    开始答题
+                  </Space>
+                </Button>
+              </div>
             </Card>
           </div>
         </div>

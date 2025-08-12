@@ -205,7 +205,7 @@ export const checkDuplicateSubmission = async (req: Request, res: Response): Pro
 export const submitExamAnswers = async (req: Request, res: Response): Promise<void> => {
   try {
     const { publicUuid } = req.params;
-    const { student_id, student_name, answers }: SubmitExamRequest = req.body;
+    const { student_id, student_name, answers, started_at }: SubmitExamRequest = req.body;
 
     // 参数验证
     if (!student_id || !student_name || !answers) {
@@ -218,6 +218,7 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
       where: { publicUuid },
       select: {
         id: true,
+        paperId: true,
         title: true,
         status: true,
         startTime: true,
@@ -249,8 +250,18 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
     // 获取客户端IP地址
     const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
 
-    // 计算得分（MVP阶段简单计分）
-    const score = calculateSimpleScore(answers);
+    // 获取题目信息用于计分
+    const questions = await prisma.question.findMany({
+      where: {
+        paperId: exam.paperId,
+      },
+      orderBy: {
+        questionOrder: 'asc',
+      },
+    });
+
+    // 计算得分（智能计分，支持选项分数）
+    const score = calculateScore(answers, questions);
 
     try {
       // 创建考试结果
@@ -262,7 +273,7 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
           answers: answers,
           score,
           ipAddress,
-          startedAt: now, // 简化处理，提交时间作为开始时间
+          startedAt: started_at ? new Date(started_at) : now, // 使用前端传递的精确开始时间
         },
       });
 
@@ -298,14 +309,75 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-// 工具函数：简单计分（MVP阶段）
-function calculateSimpleScore(answers: Record<string, string>): number {
-  // MVP阶段简单计分：每道题得分相等，总分100分
-  const totalQuestions = Object.keys(answers).length;
-  if (totalQuestions === 0) return 0;
+// 工具函数：智能计分（支持选项分数）
+function calculateScore(answers: Record<string, string>, questions: any[]): number {
+  if (!questions || questions.length === 0) return 0;
   
-  const scorePerQuestion = Math.floor(100 / totalQuestions);
-  const answeredQuestions = Object.values(answers).filter(answer => answer && answer.trim() !== '').length;
+  let totalScore = 0;
+  let scoredQuestionCount = 0;
   
-  return Math.min(100, answeredQuestions * scorePerQuestion);
+  for (const question of questions) {
+    // 检查题目是否计分
+    if (question.is_scored === false) {
+      continue; // 跳过不计分的题目
+    }
+    
+    const answer = answers[question.id];
+    if (!answer || answer.trim() === '') {
+      continue; // 跳过未回答的题目
+    }
+    
+    // 获取题目选项配置
+    const options = question.options || {};
+    let questionScore = 0;
+    
+    // 检查选项是否有分数配置
+    let hasOptionScores = false;
+    for (const [, optionValue] of Object.entries(options)) {
+      if (typeof optionValue === 'object' && (optionValue as any).score !== undefined) {
+        hasOptionScores = true;
+        break;
+      }
+    }
+    
+    if (hasOptionScores) {
+      // 基于选项分数计分
+      if (question.question_type === 'multiple_choice') {
+        // 多选题：答案可能是逗号分隔的多个选项
+        const selectedOptions = answer.split(',').map(opt => opt.trim());
+        for (const selectedOption of selectedOptions) {
+          const optionData = options[selectedOption];
+          if (typeof optionData === 'object' && (optionData as any).score !== undefined) {
+            questionScore += (optionData as any).score;
+          }
+        }
+      } else {
+        // 单选题或文本题
+        const optionData = options[answer];
+        if (typeof optionData === 'object' && (optionData as any).score !== undefined) {
+          questionScore = (optionData as any).score;
+        }
+      }
+      
+      totalScore += questionScore;
+      scoredQuestionCount++;
+    } else {
+      // 传统计分：回答即得分（向后兼容）
+      scoredQuestionCount++;
+    }
+  }
+  
+  // 如果没有计分题目，返回0
+  if (scoredQuestionCount === 0) {
+    return 0;
+  }
+  
+  // 如果有选项分数，直接返回累计分数；否则按传统方式计算
+  if (totalScore > 0) {
+    return totalScore;
+  } else {
+    // 传统计分方式：100分平均分配
+    const scorePerQuestion = Math.floor(100 / scoredQuestionCount);
+    return Math.min(100, scoredQuestionCount * scorePerQuestion);
+  }
 }

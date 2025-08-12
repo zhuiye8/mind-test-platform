@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   Card,
   Form,
@@ -17,22 +17,31 @@ import {
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { paperApi, examApi } from '../services/api';
-import type { Paper, CreateExamForm } from '../types';
+import type { Paper, CreateExamForm, Exam } from '../types';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 const ExamCreate: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { examId } = useParams<{ examId?: string }>();
   const [form] = Form.useForm();
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasPassword, setHasPassword] = useState(false);
   const [hasTimeLimit, setHasTimeLimit] = useState(false);
+  const [, setCurrentExam] = useState<Exam | null>(null);
+
+  // 判断是否为编辑模式
+  const isEditMode = Boolean(examId);
 
   useEffect(() => {
     loadPapers();
-  }, []);
+    if (isEditMode && examId) {
+      loadExamData(examId);
+    }
+  }, [examId, isEditMode]);
 
   // 加载试卷列表
   const loadPapers = async () => {
@@ -44,6 +53,56 @@ const ExamCreate: React.FC = () => {
     } catch (error) {
       console.error('加载试卷列表失败:', error);
       message.error('加载试卷列表失败');
+    }
+  };
+
+  // 加载考试数据（编辑模式）
+  const loadExamData = async (examId: string) => {
+    try {
+      setLoading(true);
+      const response = await examApi.getDetail(examId);
+      if (response.success && response.data) {
+        const exam = response.data;
+        setCurrentExam(exam);
+
+        // 设置状态
+        const hasPassword = Boolean(exam.password);
+        const hasTimeLimit = Boolean(exam.start_time || exam.end_time);
+        setHasPassword(hasPassword);
+        setHasTimeLimit(hasTimeLimit);
+
+        // 预填充表单数据  
+        const formData: any = {
+          paper_id: exam.paperId || (exam as any).paper_id,
+          title: exam.title,
+          duration_minutes: exam.durationMinutes || (exam as any).duration_minutes,
+          shuffle_questions: exam.shuffleQuestions || (exam as any).shuffle_questions,
+        };
+
+        if (hasPassword) {
+          formData.password = exam.password;
+        }
+
+        const startTime = exam.startTime || (exam as any).start_time;
+        const endTime = exam.endTime || (exam as any).end_time;
+        if (hasTimeLimit && (startTime || endTime)) {
+          const timeRange = [];
+          if (startTime) timeRange.push(dayjs(startTime));
+          if (endTime) timeRange.push(dayjs(endTime));
+          if (timeRange.length === 1) {
+            // 如果只有开始时间或结束时间，补充另一端
+            timeRange.push(timeRange[0]);
+          }
+          formData.time_range = timeRange;
+        }
+
+        form.setFieldsValue(formData);
+      }
+    } catch (error) {
+      console.error('加载考试数据失败:', error);
+      message.error('加载考试数据失败');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -59,24 +118,47 @@ const ExamCreate: React.FC = () => {
         duration_minutes: values.duration_minutes,
         shuffle_questions: values.shuffle_questions || false,
         password: hasPassword ? values.password?.trim() : undefined,
-        start_time: hasTimeLimit && values.time_range?.[0] 
-          ? values.time_range[0].toISOString() 
+        start_time: hasTimeLimit && values.time_range?.[0]
+          ? values.time_range[0].toISOString()
           : undefined,
-        end_time: hasTimeLimit && values.time_range?.[1] 
-          ? values.time_range[1].toISOString() 
+        end_time: hasTimeLimit && values.time_range?.[1]
+          ? values.time_range[1].toISOString()
           : undefined,
       };
 
-      const response = await examApi.create(submitData);
-      if (response.success) {
-        message.success('考试创建成功！当前为草稿状态，请在考试列表中发布考试。');
-        navigate('/exams');
+      let response;
+      if (isEditMode && examId) {
+        // 编辑模式：调用更新API
+        response = await examApi.update(examId, submitData);
+        if (response.success) {
+          message.success('考试更新成功！');
+          // 根据来源页面状态决定返回路径
+          if (location.state?.from === 'exam-list') {
+            navigate('/exams', {
+              state: {
+                returnToLane: location.state.returnToLane,
+                returnToPage: location.state.returnToPage
+              }
+            });
+          } else {
+            navigate('/exams');
+          }
+        } else {
+          message.error(response.error || '考试更新失败');
+        }
       } else {
-        message.error(response.error || '考试创建失败');
+        // 创建模式：调用创建API
+        response = await examApi.create(submitData);
+        if (response.success) {
+          message.success('考试创建成功！当前为草稿状态，请在考试列表中发布考试。');
+          navigate('/exams');
+        } else {
+          message.error(response.error || '考试创建失败');
+        }
       }
     } catch (error) {
-      console.error('创建考试失败:', error);
-      message.error('创建考试失败，请重试');
+      console.error(isEditMode ? '更新考试失败:' : '创建考试失败:', error);
+      message.error(isEditMode ? '更新考试失败，请重试' : '创建考试失败，请重试');
     } finally {
       setLoading(false);
     }
@@ -87,14 +169,25 @@ const ExamCreate: React.FC = () => {
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>
         <Space>
-          <Button 
-            icon={<ArrowLeftOutlined />} 
-            onClick={() => navigate('/exams')}
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={() => {
+              if (location.state?.from === 'exam-list') {
+                navigate('/exams', {
+                  state: {
+                    returnToLane: location.state.returnToLane,
+                    returnToPage: location.state.returnToPage
+                  }
+                });
+              } else {
+                navigate('/exams');
+              }
+            }}
           >
             返回
           </Button>
           <Title level={2} style={{ margin: 0 }}>
-            创建考试
+            {isEditMode ? '编辑考试' : '创建考试'}
           </Title>
         </Space>
       </div>
@@ -112,7 +205,7 @@ const ExamCreate: React.FC = () => {
         >
           {/* 基本信息 */}
           <Divider orientation="left">基本信息</Divider>
-          
+
           <Form.Item
             label="选择试卷"
             name="paper_id"
@@ -129,10 +222,11 @@ const ExamCreate: React.FC = () => {
               {papers.map(paper => (
                 <Select.Option key={paper.id} value={paper.id} label={paper.title}>
                   <div>
-                    <div style={{ fontWeight: 500 }}>{paper.title}</div>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
+                    <div style={{ fontWeight: 500 }}>
+                      {paper.title}
+                      <Text type="secondary" style={{ fontSize: 12 }}> | <span></span>
                       {paper.question_count} 道题 | {paper.description || '暂无描述'}
-                    </Text>
+                    </Text></div>
                   </div>
                 </Select.Option>
               ))}
@@ -255,7 +349,18 @@ const ExamCreate: React.FC = () => {
           {/* 提交按钮 */}
           <Form.Item style={{ marginTop: 32 }}>
             <Space>
-              <Button onClick={() => navigate('/exams')}>
+              <Button onClick={() => {
+                if (location.state?.from === 'exam-list') {
+                  navigate('/exams', {
+                    state: {
+                      returnToLane: location.state.returnToLane,
+                      returnToPage: location.state.returnToPage
+                    }
+                  });
+                } else {
+                  navigate('/exams');
+                }
+              }}>
                 取消
               </Button>
               <Button
@@ -264,7 +369,7 @@ const ExamCreate: React.FC = () => {
                 loading={loading}
                 icon={<SaveOutlined />}
               >
-                创建考试
+                {isEditMode ? '保存修改' : '创建考试'}
               </Button>
             </Space>
           </Form.Item>

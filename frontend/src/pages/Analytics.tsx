@@ -10,7 +10,6 @@ import {
   Button,
   Space,
   Tag,
-  Progress,
   message,
   Empty,
   Modal,
@@ -25,7 +24,7 @@ import {
   DownloadOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { analyticsApi } from '../services/api';
+import { analyticsApi, examApi } from '../services/api';
 import type { AnalyticsData } from '../types';
 import { getStatusColor, getStatusName, ExamStatus } from '../constants/examStatus';
 import type { ExamStatusType } from '../constants/examStatus';
@@ -53,17 +52,25 @@ const ParticipantModal: React.FC<{
     
     try {
       setLoading(true);
-      // 这里需要调用获取考试参与者的API
-      // const response = await examApi.getExamSubmissions(examId);
-      // 暂时模拟数据
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setParticipants([
-        { id: 1, student_id: '2021001', student_name: '张三', submitted_at: '2025-01-08 10:30:00' },
-        { id: 2, student_id: '2021002', student_name: '李四', submitted_at: '2025-01-08 11:15:00' },
-      ]);
+      const response = await examApi.getExamSubmissions(examId);
+      if (response.success && response.data) {
+        // 转换数据格式为表格需要的格式
+        const formattedParticipants = response.data.data.map((result: any) => ({
+          id: result.id,
+          student_id: result.participant_id,
+          student_name: result.participant_name,
+          submitted_at: result.submitted_at,
+          score: result.score,
+          ip_address: result.ip_address,
+        }));
+        setParticipants(formattedParticipants);
+      } else {
+        setParticipants([]);
+      }
     } catch (error) {
       console.error('加载参与者失败:', error);
       message.error('加载参与者失败');
+      setParticipants([]);
     } finally {
       setLoading(false);
     }
@@ -81,10 +88,35 @@ const ParticipantModal: React.FC<{
       key: 'student_name',
     },
     {
+      title: '分数',
+      dataIndex: 'score',
+      key: 'score',
+      render: (score: number) => {
+        if (score === null || score === undefined) {
+          return <Text type="secondary">-</Text>;
+        }
+        if (score === 0) {
+          return (
+            <Text type="secondary" style={{ fontStyle: 'italic' }}>
+              不计分
+            </Text>
+          );
+        }
+        return `${score}分`;
+      },
+      sorter: (a: any, b: any) => (a.score || 0) - (b.score || 0),
+    },
+    {
       title: '提交时间',
       dataIndex: 'submitted_at',
       key: 'submitted_at',
       render: (time: string) => new Date(time).toLocaleString(),
+    },
+    {
+      title: 'IP地址',
+      dataIndex: 'ip_address',
+      key: 'ip_address',
+      render: (ip: string) => ip || '-',
     },
   ];
 
@@ -122,7 +154,7 @@ const Analytics: React.FC = () => {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  // const [statusFilter, setStatusFilter] = useState<string>('all'); // 暂未使用
   const [participantModalVisible, setParticipantModalVisible] = useState(false);
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
 
@@ -363,7 +395,7 @@ const Analytics: React.FC = () => {
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic
-                  title="平均完成率"
+                  title="考试参与率"
                   value={analyticsData.overall_stats.avg_completion_rate}
                   suffix="%"
                   precision={1}
@@ -427,11 +459,11 @@ const Analytics: React.FC = () => {
                     <Text strong>{analyticsData.monthly_trends?.reduce((sum, item) => sum + item.participants, 0) || 0} 人次</Text>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Text type="secondary">平均完成率</Text>
+                    <Text type="secondary">平均参与人数</Text>
                     <Text strong>
                       {analyticsData.monthly_trends?.length > 0
                         ? (analyticsData.monthly_trends.reduce((sum, item) => sum + item.completion_rate, 0) / analyticsData.monthly_trends.length).toFixed(1)
-                        : 0}%
+                        : 0} 人/考试
                     </Text>
                   </div>
                 </div>

@@ -318,7 +318,7 @@ const StudentAnswerDetail: React.FC<StudentAnswerDetailProps> = ({
                               {key}.
                             </Text>
                             <Text style={{ color: question.student_answer === key ? '#1890ff' : '#333' }}>
-                              {value}
+                              {typeof value === 'string' ? value : value.text || value.label || ''}
                             </Text>
                             {question.student_answer === key && (
                               <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 14 }} />

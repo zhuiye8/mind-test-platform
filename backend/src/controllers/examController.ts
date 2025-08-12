@@ -378,6 +378,7 @@ export const getExamById = async (req: Request, res: Response): Promise<void> =>
       title: exam.title,
       description: exam.paper.description || '', // 从paper获取描述
       paper_title: exam.paper.title, // 统一为字符串格式，与列表接口保持一致
+      paper_id: exam.paperId, // 🔧 添加缺失的paper_id字段，用于前端编辑时回显试卷选择
       duration_minutes: exam.durationMinutes,
       question_count: questionIds.length,
       participant_count: exam._count.results,
@@ -385,6 +386,7 @@ export const getExamById = async (req: Request, res: Response): Promise<void> =>
       start_time: exam.startTime,
       end_time: exam.endTime,
       has_password: !!exam.password,
+      password: exam.password, // 🔧 返回实际password值，用于前端编辑时回显密码
       max_attempts: 1, // 目前系统默认1次
       show_results: true, // 目前系统默认显示结果
       shuffle_questions: exam.shuffleQuestions,
@@ -1703,10 +1705,22 @@ export const getExamSubmissions = async (req: Request, res: Response): Promise<v
       sort_order = 'desc'
     }: GetExamSubmissionsRequest & { [key: string]: any } = req.query;
 
+    // API字段名到Prisma模型字段名的映射
+    const mapApiFieldToPrismaField = (apiField: string): string => {
+      const fieldMap: Record<string, string> = {
+        'submitted_at': 'submittedAt',
+        'participant_id': 'participantId', 
+        'participant_name': 'participantName',
+        'ip_address': 'ipAddress',
+        'started_at': 'startedAt'
+      };
+      return fieldMap[apiField] || apiField;
+    };
+
     const paginationOptions: PaginationOptions = {
       page: parseInt(String(page)),
       limit: Math.min(parseInt(String(limit)), 200), // 最大200条
-      sortField: sort_field as string,
+      sortField: mapApiFieldToPrismaField(sort_field as string), // 字段名转换
       sortOrder: sort_order as 'asc' | 'desc',
     };
 

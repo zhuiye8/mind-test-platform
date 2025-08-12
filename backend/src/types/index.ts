@@ -62,6 +62,7 @@ export interface SubmitExamRequest {
   student_id: string;
   student_name: string;
   answers: ExamAnswers;
+  started_at?: string; // 答题开始时间（ISO格式字符串）
 }
 
 // 验证考试密码的请求类型

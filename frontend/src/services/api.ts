@@ -205,7 +205,7 @@ export const examApi = {
 
   // 导出考试结果
   exportResults: (examId: string): Promise<Blob> => {
-    return api.get(`/teacher/exams/${examId}/export`, {
+    return api.get(`/teacher/exams/${examId}/results/export`, {
       responseType: 'blob',
     });
   },
@@ -298,6 +298,7 @@ export const publicApi = {
     student_id: string;
     student_name: string;
     answers: Record<string, any>;
+    started_at?: string; // 答题开始时间（ISO格式）
   }): Promise<ApiResponse<{ result_id: string }>> => {
     return api.post(`/public/exams/${uuid}/submit`, data);
   },

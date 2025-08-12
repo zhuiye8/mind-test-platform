@@ -8,17 +8,11 @@ import {
   message,
   Tooltip,
   Modal,
-  Row,
-  Col,
-  Avatar,
   Badge,
-  Divider,
-  Empty,
   Progress,
 } from 'antd';
 import {
   PlusOutlined,
-  EyeOutlined,
   LinkOutlined,
   PlayCircleOutlined,
   StopOutlined,
@@ -26,18 +20,12 @@ import {
   ExclamationCircleOutlined,
   CheckCircleOutlined,
   InboxOutlined,
-  RollbackOutlined,
+  // RollbackOutlined, // 暂时不使用
   ReloadOutlined,
   FileTextOutlined,
   CalendarOutlined,
-  UserOutlined,
   ClockCircleOutlined,
   EditOutlined,
-  MoreOutlined,
-  LockOutlined,
-  SwapOutlined,
-  FieldTimeOutlined,
-  EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { examApi } from '../services/api';
@@ -99,6 +87,7 @@ const ExamList: React.FC = () => {
       [ExamStatus.PUBLISHED]: 1,
       [ExamStatus.EXPIRED]: 1,
       [ExamStatus.SUCCESS]: 1,
+      [ExamStatus.ARCHIVED]: 1,
     };
     
     // 如果是从详情页返回，恢复页面状态
@@ -240,21 +229,21 @@ const ExamList: React.FC = () => {
     }
   };
 
-  // 恢复考试处理函数
-  const handleRestoreExam = async (examId: string) => {
-    try {
-      const response = await examApi.restoreExam(examId);
-      if (response.success) {
-        message.success('考试已恢复');
-        loadExams();
-      } else {
-        message.error(response.error || '恢复失败');
-      }
-    } catch (error) {
-      console.error('恢复失败:', error);
-      message.error('恢复失败');
-    }
-  };
+  // 恢复考试处理函数 (暂时不使用)
+  // const handleRestoreExam = async (examId: string) => {
+  //   try {
+  //     const response = await examApi.restoreExam(examId);
+  //     if (response.success) {
+  //       message.success('考试已恢复');
+  //       loadExams();
+  //     } else {
+  //       message.error(response.error || '恢复失败');
+  //     }
+  //   } catch (error) {
+  //     console.error('恢复失败:', error);
+  //     message.error('恢复失败');
+  //   }
+  // };
 
   // 删除考试处理函数
   const handleDeleteExam = async (exam: Exam) => {
@@ -1073,7 +1062,7 @@ const ExamList: React.FC = () => {
 
   // 紧凑版卡片组件 - 网格布局，丰富内容
   const CompactExamCard: React.FC<{ exam: Exam }> = ({ exam }) => {
-    const { isUrgent, isActive, hasParticipants } = getExamInfo(exam);
+    const { isUrgent, isActive } = getExamInfo(exam);
     
     return (
       <Card
@@ -1439,229 +1428,6 @@ const ExamList: React.FC = () => {
               )}
             </Space>
           </div>
-        </div>
-      </Card>
-    );
-  };
-
-  // 原版卡片组件 - 保留备用
-  const ExamCard: React.FC<{ exam: Exam }> = ({ exam }) => {
-    return (
-      <Card
-        size="small"
-        className="kanban-card"
-        style={{ 
-          marginBottom: 12,
-          cursor: 'pointer',
-          border: '1px solid #f0f0f0'
-        }}
-        styles={{ body: { padding: '12px' } }}
-        hoverable
-        onClick={() => navigate(`/exams/${exam.id}`, {
-          state: { 
-            from: 'exam-list',
-            returnToLane: expandedLane,
-            returnToPage: currentPage[expandedLane]
-          }
-        })}
-      >
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ 
-            fontWeight: 500, 
-            fontSize: '14px', 
-            color: '#262626',
-            marginBottom: 4,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
-          }}>
-            <span style={{ 
-              flex: 1, 
-              overflow: 'hidden', 
-              textOverflow: 'ellipsis', 
-              whiteSpace: 'nowrap' 
-            }}>
-              {exam.title}
-            </span>
-            <Button
-              type="text"
-              size="small"
-              icon={<MoreOutlined />}
-              onClick={(e) => e.stopPropagation()}
-              style={{ 
-                color: '#8c8c8c',
-                padding: '0 4px',
-                height: '20px',
-                width: '20px'
-              }}
-            />
-          </div>
-          
-          <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
-            <FileTextOutlined style={{ marginRight: 4 }} />
-            {exam.paper_title || '未知试卷'}
-          </Typography.Text>
-        </div>
-
-        <div style={{ marginBottom: 8 }}>
-          <Space size="small" wrap>
-            {exam.participant_count && exam.participant_count > 0 && (
-              <Badge 
-                count={exam.participant_count} 
-                size="small"
-                style={{ backgroundColor: '#52c41a' }}
-              >
-                <UserOutlined style={{ fontSize: '12px', color: '#8c8c8c' }} />
-              </Badge>
-            )}
-            <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
-              <ClockCircleOutlined style={{ marginRight: 2 }} />
-              {exam.duration_minutes || 0}分钟
-            </Typography.Text>
-          </Space>
-        </div>
-
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginTop: 8
-        }}>
-          <Typography.Text type="secondary" style={{ fontSize: '11px' }}>
-            <CalendarOutlined style={{ marginRight: 4 }} />
-            {exam.created_at ? new Date(exam.created_at).toLocaleDateString() : ''}
-          </Typography.Text>
-          
-          <Space size="small">
-            {exam.status === ExamStatus.PUBLISHED && exam.public_url && (
-              <Tooltip title="复制链接">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<LinkOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    copyToClipboard(exam.public_url);
-                  }}
-                  style={{ padding: '0 4px', height: '20px' }}
-                />
-              </Tooltip>
-            )}
-            
-            {/* 主要操作按钮 */}
-            {exam.status === ExamStatus.DRAFT && (
-              <Tooltip title="发布考试">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<PlayCircleOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleTogglePublish(exam.id);
-                  }}
-                  style={{ 
-                    color: '#52c41a', 
-                    padding: '0 4px', 
-                    height: '20px' 
-                  }}
-                />
-              </Tooltip>
-            )}
-
-            {exam.status === ExamStatus.PUBLISHED && (
-              <>
-                <Tooltip title="正常结束">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<CheckCircleOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleFinishExam(exam.id);
-                    }}
-                    style={{ 
-                      color: '#1890ff', 
-                      padding: '0 4px', 
-                      height: '20px' 
-                    }}
-                  />
-                </Tooltip>
-                <Tooltip title="停止考试">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<StopOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleTogglePublish(exam.id);
-                    }}
-                    style={{ 
-                      color: '#ff4d4f', 
-                      padding: '0 4px', 
-                      height: '20px' 
-                    }}
-                  />
-                </Tooltip>
-              </>
-            )}
-
-            {exam.status === ExamStatus.SUCCESS && (
-              <Tooltip title="归档">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<InboxOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleArchiveExam(exam.id);
-                  }}
-                  style={{ 
-                    color: '#722ed1', 
-                    padding: '0 4px', 
-                    height: '20px' 
-                  }}
-                />
-              </Tooltip>
-            )}
-
-            {exam.status === ExamStatus.ARCHIVED && (
-              <Tooltip title="恢复">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<RollbackOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRestoreExam(exam.id);
-                  }}
-                  style={{ 
-                    color: '#fa8c16', 
-                    padding: '0 4px', 
-                    height: '20px' 
-                  }}
-                />
-              </Tooltip>
-            )}
-
-            {canDeleteExam(exam) && (
-              <Tooltip title={getDeleteTooltip(exam)}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<DeleteOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    showDeleteConfirm(exam);
-                  }}
-                  style={{ 
-                    color: '#ff4d4f', 
-                    padding: '0 4px', 
-                    height: '20px' 
-                  }}
-                />
-              </Tooltip>
-            )}
-          </Space>
         </div>
       </Card>
     );

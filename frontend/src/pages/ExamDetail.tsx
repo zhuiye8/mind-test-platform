@@ -257,16 +257,24 @@ const ExamDetail: React.FC = () => {
         const startTime = new Date(record.started_at);
         const endTime = new Date(record.submitted_at);
         const durationMs = endTime.getTime() - startTime.getTime();
-        const durationMinutes = Math.round(durationMs / 60000);
+        const durationSeconds = Math.floor(durationMs / 1000);
         
-        if (durationMinutes < 1) {
-          return <Text style={{ color: '#ff4d4f' }}>{'<1分钟'}</Text>;
-        } else if (durationMinutes < 30) {
-          return <Text style={{ color: '#52c41a' }}>{durationMinutes}分钟</Text>;
-        } else if (durationMinutes < 60) {
-          return <Text style={{ color: '#faad14' }}>{durationMinutes}分钟</Text>;
+        // 精确显示时间，支持秒级
+        if (durationSeconds < 60) {
+          // 0-59秒：显示秒数
+          const color = durationSeconds <= 10 ? '#ff4d4f' : '#52c41a';
+          return <Text style={{ color }}>{durationSeconds}秒</Text>;
+        } else if (durationSeconds < 3600) {
+          // 1分钟-59分钟：显示分钟+秒数
+          const minutes = Math.floor(durationSeconds / 60);
+          const seconds = durationSeconds % 60;
+          const color = minutes < 30 ? '#52c41a' : minutes < 60 ? '#faad14' : '#ff4d4f';
+          return <Text style={{ color }}>{minutes}分{seconds}秒</Text>;
         } else {
-          return <Text style={{ color: '#ff4d4f' }}>{durationMinutes}分钟</Text>;
+          // 1小时以上：显示小时+分钟
+          const hours = Math.floor(durationSeconds / 3600);
+          const minutes = Math.floor((durationSeconds % 3600) / 60);
+          return <Text style={{ color: '#ff4d4f' }}>{hours}小时{minutes}分</Text>;
         }
       },
     },
@@ -288,13 +296,26 @@ const ExamDetail: React.FC = () => {
       dataIndex: 'score',
       key: 'score',
       width: 80,
-      render: (score: number | null | undefined) => {
+      render: (score: number | null | undefined, record: ExamResult) => {
         if (score === null || score === undefined) {
           return <Text type="secondary">-</Text>;
         }
+        
+        // 通过答题数量和分数判断是否为计分题目
+        const answerCount = Object.keys(record.answers || {}).length;
+        
+        // 如果有答题但分数为0，可能是不计分题目
+        if (score === 0 && answerCount > 0) {
+          return (
+            <Text type="secondary" style={{ fontStyle: 'italic' }}>
+              不计分
+            </Text>
+          );
+        }
+        
         return (
           <Text strong style={{ color: '#722ed1' }}>
-            {score}
+            {score}分
           </Text>
         );
       },

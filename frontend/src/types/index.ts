@@ -35,6 +35,17 @@ export interface Paper {
   exam_count: number;
   created_at: string;
   updated_at: string;
+  // 新增量表字段
+  scale_type?: 'grouped' | 'flat';
+  show_scores?: boolean;
+  scale_config?: {
+    totalQuestions?: number;
+    scoredQuestions?: number;
+    fillerQuestions?: number;
+    scoringType?: string;
+    scoreRange?: { min: number; max: number };
+    description?: string;
+  };
 }
 
 export interface CreatePaperForm {
@@ -42,25 +53,49 @@ export interface CreatePaperForm {
   description?: string;
 }
 
+// 量表维度类型
+export interface Scale {
+  id: string;
+  paper_id: string;
+  scale_name: string;
+  scale_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// 选项类型定义 - 支持分数和文本两种格式
+export interface QuestionOption {
+  text?: string;     // 选项文本（新格式）
+  label?: string;    // 选项文本（兼容导入格式）
+  score?: number;    // 选项分数
+  value?: number;    // 兼容导入格式的分数
+}
+
 // 题目相关类型
 export interface Question {
   id: string;
   question_order: number;
   title: string;
-  options: Record<string, string>;
+  options: Record<string, string | QuestionOption>; // 支持字符串和对象两种格式
   question_type: 'single_choice' | 'multiple_choice' | 'text';
   is_required?: boolean; // 是否必填，默认为true
   created_at: string;
   updated_at: string;
+  // 新增量表字段
+  scale_id?: string;
+  score_value?: number;
+  is_scored?: boolean;
+  display_condition?: any;
 }
 
 
 export interface CreateQuestionForm {
   title: string;
   question_type: 'single_choice' | 'multiple_choice' | 'text';
-  options: Record<string, string>;
+  options: Record<string, string | QuestionOption>;
   question_order?: number;
   is_required?: boolean; // 是否必填，默认为true
+  is_scored?: boolean; // 是否计分
 }
 
 // 考试相关类型
@@ -112,6 +147,20 @@ export interface CreateExamForm {
   shuffle_questions: boolean;
 }
 
+// 题目作答记录类型
+export interface QuestionResponse {
+  id: string;
+  exam_result_id: string;
+  question_id: string;
+  question_order: number;
+  response_value: string;
+  response_score?: number;
+  question_displayed_at?: string;
+  response_submitted_at: string;
+  time_to_answer_seconds?: number;
+  created_at: string;
+}
+
 // 考试结果相关类型
 export interface ExamResult {
   id: string;
@@ -122,6 +171,12 @@ export interface ExamResult {
   started_at: string | null;
   submitted_at: string;
   score?: number;
+  
+  // 新增量表统计字段
+  total_questions?: number;
+  answered_questions?: number;
+  total_time_seconds?: number;
+  scale_scores?: Record<string, number>; // 各维度得分
   
   // 向后兼容字段
   student_id?: string;

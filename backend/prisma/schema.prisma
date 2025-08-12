@@ -41,6 +41,9 @@ model Paper {
   teacherId   String   @map("teacher_id")
   title       String
   description String?
+  scaleType   String   @default("flat") @map("scale_type") // 'grouped'/'flat' - 量表类型
+  showScores  Boolean  @default(false) @map("show_scores") // 是否显示分数给学生
+  scaleConfig Json?    @map("scale_config") // 量表配置信息
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -48,6 +51,7 @@ model Paper {
   teacher   Teacher    @relation(fields: [teacherId], references: [id], onDelete: Restrict)
   questions Question[]
   exams     Exam[]
+  scales    Scale[]
 
   // 数据库索引优化
   @@index([teacherId, createdAt(sort: Desc)]) // 按教师ID和创建时间查询试卷列表
@@ -55,24 +59,48 @@ model Paper {
   @@map("papers")
 }
 
-// 题目表 - MVP版本：支持条件逻辑
+// 量表维度表 - 管理量表分组（心理测试的维度概念）
+model Scale {
+  id          String   @id @default(uuid())
+  paperId     String   @map("paper_id")
+  scaleName   String   @map("scale_name") // "家庭生活"、"分离焦虑"等维度名称
+  scaleOrder  Int      @map("scale_order") // 显示顺序
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  paper     Paper      @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  // 数据库索引优化
+  @@index([paperId, scaleOrder]) // 按试卷ID和顺序查询维度
+  @@map("scales")
+}
+
+// 题目表 - 支持条件逻辑和量表分组
 model Question {
   id               String   @id @default(uuid())
   paperId          String   @map("paper_id")
+  scaleId          String?  @map("scale_id") // 关联的量表维度ID（可为空，支持扁平结构）
   questionOrder    Int      @map("question_order")
   title            String
   options          Json     // PostgreSQL JSONB字段
   questionType     String   @default("single_choice") @map("question_type")
   displayCondition Json?    @map("display_condition") // PostgreSQL JSONB字段
+  scoreValue       Int?     @map("score_value") // 题目基础分值
+  isScored         Boolean  @default(true) @map("is_scored") // 是否计分（排除填充题）
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   // 关系
-  paper Paper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  paper     Paper              @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  scale     Scale?             @relation(fields: [scaleId], references: [id], onDelete: SetNull)
+  responses QuestionResponse[]
 
   // 数据库索引优化
   @@index([paperId, questionOrder]) // 按试卷ID和题目顺序查询题目
   @@index([paperId, createdAt(sort: Desc)]) // 按试卷ID和创建时间查询
+  @@index([scaleId, questionOrder]) // 按维度ID和题目顺序查询
   @@map("questions")
 }
 
@@ -108,26 +136,59 @@ model Exam {
   @@map("exams")
 }
 
-// 考试结果表
-model ExamResult {
-  id              String    @id @default(uuid())
-  examId          String    @map("exam_id")
-  participantId   String    @map("participant_id")
-  participantName String    @map("participant_name")
-  answers         Json      // PostgreSQL JSONB字段
-  score           Int
-  ipAddress       String?   @map("ip_address")
-  startedAt       DateTime? @map("started_at")
-  submittedAt     DateTime  @default(now()) @map("submitted_at")
+// 题目作答记录表 - 记录每题详细作答数据和时间戳
+model QuestionResponse {
+  id                    String    @id @default(uuid())
+  examResultId          String    @map("exam_result_id")
+  questionId            String    @map("question_id")
+  questionOrder         Int       @map("question_order") // 题目顺序
+  responseValue         String    @map("response_value") // 用户选择（如：'A', 'B', '多选答案'）
+  responseScore         Int?      @map("response_score") // 本题得分
+  questionDisplayedAt   DateTime? @map("question_displayed_at") // 题目开始显示时间
+  responseSubmittedAt   DateTime  @default(now()) @map("response_submitted_at") // 提交答案时间
+  timeToAnswerSeconds   Int?      @map("time_to_answer_seconds") // 作答用时（秒）
+  createdAt             DateTime  @default(now()) @map("created_at")
 
   // 关系
-  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examResult ExamResult @relation(fields: [examResultId], references: [id], onDelete: Cascade)
+  question   Question   @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  // 数据库索引优化 - 支持AI分析查询
+  @@index([examResultId, questionOrder]) // 按考试结果ID和题目顺序查询
+  @@index([questionDisplayedAt, responseSubmittedAt]) // 时间戳范围查询
+  @@index([questionId, timeToAnswerSeconds]) // 按题目和作答时长分析
+  
+  // 唯一约束：防止同一考试结果重复记录同一题目
+  @@unique([examResultId, questionId])
+  @@map("question_responses")
+}
+
+// 考试结果表
+model ExamResult {
+  id                      String    @id @default(uuid())
+  examId                  String    @map("exam_id")
+  participantId           String    @map("participant_id")
+  participantName         String    @map("participant_name")
+  answers                 Json      // PostgreSQL JSONB字段（保持向后兼容）
+  score                   Int
+  totalQuestions          Int?      @map("total_questions") // 总题数
+  answeredQuestions       Int?      @map("answered_questions") // 已答题数
+  totalTimeSeconds        Int?      @map("total_time_seconds") // 总用时（秒）
+  scaleScores            Json?     @map("scale_scores") // 各维度得分 {"家庭生活": 45, "学业表现": 28}
+  ipAddress              String?   @map("ip_address")
+  startedAt              DateTime? @map("started_at")
+  submittedAt            DateTime  @default(now()) @map("submitted_at")
+
+  // 关系
+  exam              Exam               @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questionResponses QuestionResponse[]
 
   // 数据库索引优化
   @@index([examId, submittedAt(sort: Desc)]) // 按考试ID和提交时间查询结果列表
   @@index([examId, score(sort: Desc)]) // 按考试ID和分数排序查询
   @@index([examId, participantName]) // 按考试ID和参与者姓名搜索
   @@index([submittedAt(sort: Desc)]) // 按提交时间查询所有结果
+  @@index([totalTimeSeconds]) // 按总用时查询（AI分析用）
 
   // 唯一约束：防止重复提交
   @@unique([examId, participantId])

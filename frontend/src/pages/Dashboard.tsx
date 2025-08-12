@@ -11,9 +11,7 @@ import {
   Avatar, 
   Tag,
   Progress,
-  Skeleton,
-  Empty,
-  Divider
+  Empty
 } from 'antd';
 import {
   FileTextOutlined,
@@ -23,15 +21,13 @@ import {
   PlusOutlined,
   EyeOutlined,
   TrophyOutlined,
-  RiseOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { analyticsApi, paperApi, examApi } from '../services/api';
-import type { AnalyticsData, Paper, Exam } from '../types';
+import { analyticsApi } from '../services/api';
 import { getStatusColor, getStatusName } from '../constants/examStatus';
 import type { ExamStatusType } from '../constants/examStatus';
 
@@ -82,7 +78,7 @@ const Dashboard: React.FC = () => {
   // const getStatusText = getStatusName; // 已导入为 getStatusName
 
   // 计算统计数据的变化趋势（模拟数据，实际应从后端获取）
-  const getTrendIcon = (value: number) => {
+  const getTrendIcon = (_value: number) => {
     const trend = Math.random() > 0.5 ? 'up' : 'down';
     const percentage = Math.floor(Math.random() * 20) + 1;
     
@@ -356,7 +352,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div>
                     <Text type="secondary" className="text-xs font-medium uppercase tracking-wider">
-                      完成率
+                      考试参与率
                     </Text>
                     <div className="mt-1">
                       {getTrendIcon(dashboardData?.overall_stats.avg_completion_rate || 0)}
@@ -385,7 +381,7 @@ const Dashboard: React.FC = () => {
                 strokeWidth={6}
               />
               <Text type="secondary" className="text-xs mt-2 block">
-                平均测试完成率
+                考试平均参与率
               </Text>
             </div>
           </Card>

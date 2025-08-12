@@ -394,50 +394,6 @@
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1) !important;
 }
 
-/* ========== Tag 标签组件 ========== */
-.ant-tag {
-  border-radius: var(--border-radius-full) !important;
-  font-size: var(--font-size-xs) !important;
-  padding: var(--spacing-1) var(--spacing-3) !important;
-  border: 1px solid var(--color-neutral-200) !important;
-  background: var(--color-neutral-50) !important;
-  color: var(--color-neutral-700) !important;
-  transition: all var(--duration-normal) var(--easing-ease-out) !important;
-  font-weight: var(--font-weight-medium) !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: var(--spacing-1) !important;
-}
-
-.ant-tag:hover {
-  transform: translateY(-1px) scale(1.02) !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-
-.ant-tag-success {
-  background: rgba(16, 185, 129, 0.1) !important;
-  color: var(--color-secondary-700) !important;
-  border-color: var(--color-secondary-300) !important;
-}
-
-.ant-tag-warning {
-  background: rgba(245, 158, 11, 0.1) !important;
-  color: var(--color-accent-700) !important;
-  border-color: var(--color-accent-300) !important;
-}
-
-.ant-tag-error {
-  background: rgba(239, 68, 68, 0.1) !important;
-  color: #DC2626 !important;
-  border-color: #FCA5A5 !important;
-}
-
-.ant-tag-processing {
-  background: rgba(79, 70, 229, 0.1) !important;
-  color: var(--color-primary-700) !important;
-  border-color: var(--color-primary-300) !important;
-}
-
 /* ========== Statistic 统计组件 ========== */
 .ant-statistic {
   text-align: center;
@@ -474,43 +430,6 @@
   color: var(--color-primary-500) !important;
 }
 
-/* ========== List 列表组件 ========== */
-.ant-list {
-  background: var(--color-bg-paper);
-}
-
-.ant-list-item {
-  padding: var(--spacing-4) var(--spacing-5) !important;
-  border-bottom: 1px solid var(--color-neutral-100) !important;
-  transition: all var(--duration-normal) var(--easing-ease-out) !important;
-  border-radius: var(--border-radius-md);
-  margin-bottom: var(--spacing-1);
-}
-
-.ant-list-item:hover {
-  background: var(--color-neutral-50) !important;
-  transform: translateX(4px) !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-
-.ant-list-item:last-child {
-  border-bottom: none !important;
-}
-
-.ant-list-item-meta-title {
-  font-size: var(--font-size-base) !important;
-  font-weight: var(--font-weight-medium) !important;
-  color: var(--color-neutral-800) !important;
-}
-
-.ant-list-item-meta-description {
-  font-size: var(--font-size-sm) !important;
-  color: var(--color-neutral-600) !important;
-}
-
-.ant-list-item-action {
-  margin-left: var(--spacing-4) !important;
-}
 
 /* ========== Progress 进度条组件 ========== */
 .ant-progress-line .ant-progress-bg {

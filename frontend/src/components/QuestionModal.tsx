@@ -11,9 +11,13 @@ import {
   Divider,
   message,
   Checkbox,
+  InputNumber,
+  Switch,
+  Row,
+  Col,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import type { Question, CreateQuestionForm } from '../types';
+import type { Question, CreateQuestionForm, QuestionOption } from '../types';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -33,30 +37,46 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
   onSubmit,
 }) => {
   const [form] = Form.useForm();
-  const [options, setOptions] = useState<{ key: string; value: string }[]>([]);
+  const [options, setOptions] = useState<{ key: string; text: string; score?: number }[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isScored, setIsScored] = useState(false); // 是否启用计分
 
   // 当模态框打开或题目变更时，初始化表单数据
   useEffect(() => {
     if (visible) {
       if (question) {
         // 编辑模式：填充现有题目数据
+        const questionIsScored = question.is_scored !== false;
+        setIsScored(questionIsScored);
+        
         form.setFieldsValue({
           title: question.title,
           question_type: question.question_type,
           is_required: question.is_required !== false, // 默认为true，除非明确设置为false
+          is_scored: questionIsScored,
         });
         
-        // 转换选项格式
-        const optionsList = Object.entries(question.options || {}).map(([key, value]) => ({
-          key,
-          value,
-        }));
+        // 转换选项格式 - 兼容多种格式
+        const optionsList = Object.entries(question.options || {}).map(([key, value]) => {
+          if (typeof value === 'string') {
+            // 旧格式：纯字符串
+            return { key, text: value };
+          } else if (typeof value === 'object') {
+            // 新格式或导入格式
+            return {
+              key,
+              text: value.text || value.label || '',
+              score: value.score !== undefined ? value.score : value.value,
+            };
+          }
+          return { key, text: '' };
+        });
         setOptions(optionsList);
       } else {
         // 创建模式：重置表单和选项
         form.resetFields();
-        setOptions([{ key: 'A', value: '' }]);
+        setOptions([{ key: 'A', text: '' }]);
+        setIsScored(false);
       }
     }
   }, [visible, question, form]);
@@ -64,7 +84,7 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
   // 添加新选项
   const handleAddOption = () => {
     const nextKey = String.fromCharCode(65 + options.length); // A, B, C, D...
-    setOptions([...options, { key: nextKey, value: '' }]);
+    setOptions([...options, { key: nextKey, text: '', score: isScored ? 0 : undefined }]);
   };
 
   // 删除选项
@@ -76,11 +96,38 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
     setOptions(options.filter((_, i) => i !== index));
   };
 
-  // 更新选项值
-  const handleOptionChange = (index: number, value: string) => {
+  // 更新选项文本
+  const handleOptionTextChange = (index: number, text: string) => {
     const newOptions = [...options];
-    newOptions[index].value = value;
+    newOptions[index].text = text;
     setOptions(newOptions);
+  };
+
+  // 更新选项分数
+  const handleOptionScoreChange = (index: number, score: number | null) => {
+    const newOptions = [...options];
+    newOptions[index].score = score || 0;
+    setOptions(newOptions);
+  };
+
+  // 切换计分模式
+  const handleScoringToggle = (checked: boolean) => {
+    setIsScored(checked);
+    if (checked) {
+      // 启用计分时，为所有选项设置默认分数
+      const newOptions = options.map(opt => ({
+        ...opt,
+        score: opt.score !== undefined ? opt.score : 0
+      }));
+      setOptions(newOptions);
+    } else {
+      // 禁用计分时，移除分数字段
+      const newOptions = options.map(opt => ({
+        key: opt.key,
+        text: opt.text
+      }));
+      setOptions(newOptions);
+    }
   };
 
   // 表单提交处理
@@ -92,28 +139,54 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
       // 验证选项
       const questionType = values.question_type;
       if (questionType !== 'text') {
-        const validOptions = options.filter(opt => opt.value.trim());
+        const validOptions = options.filter(opt => opt.text.trim());
         if (validOptions.length < 2) {
           message.error('选择题至少需要2个有效选项');
           return;
+        }
+        
+        // 如果启用计分，验证分数设置
+        if (isScored) {
+          const hasInvalidScore = validOptions.some(opt => 
+            opt.score === undefined || opt.score === null || isNaN(opt.score)
+          );
+          if (hasInvalidScore) {
+            message.error('启用计分时，所有选项都必须设置有效分数');
+            return;
+          }
         }
       }
 
       setLoading(true);
 
+      // 构建选项数据
+      let optionsData: Record<string, string | QuestionOption> = {};
+      if (questionType !== 'text') {
+        optionsData = Object.fromEntries(
+          options
+            .filter(opt => opt.text.trim())
+            .map(opt => {
+              if (isScored && opt.score !== undefined) {
+                // 计分模式：使用对象格式
+                return [opt.key, { text: opt.text.trim(), score: opt.score }];
+              } else {
+                // 非计分模式：使用字符串格式（向后兼容）
+                return [opt.key, opt.text.trim()];
+              }
+            })
+        );
+      }
+
       // 构建提交数据
       const submitData: CreateQuestionForm = {
         title: values.title.trim(),
         question_type: values.question_type,
-        options: questionType === 'text' ? {} : Object.fromEntries(
-          options
-            .filter(opt => opt.value.trim())
-            .map(opt => [opt.key, opt.value.trim()])
-        ),
+        options: optionsData,
         // 如果是编辑模式，使用现有顺序；如果是新建，使用默认顺序
         question_order: question?.question_order || 1,
         // 添加必填字段
         is_required: values.is_required !== false, // 默认为true
+        is_scored: isScored, // 是否计分
       };
 
       await onSubmit(submitData);
@@ -210,31 +283,77 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
                   <Text strong>选项设置</Text>
                 </Divider>
                 
+                {/* 计分设置 */}
+                <Card size="small" style={{ marginBottom: 16, background: '#f8f9fa' }}>
+                  <Row align="middle" gutter={16}>
+                    <Col>
+                      <Text strong>计分设置：</Text>
+                    </Col>
+                    <Col>
+                      <Switch
+                        checked={isScored}
+                        onChange={handleScoringToggle}
+                        checkedChildren="启用计分"
+                        unCheckedChildren="不计分"
+                      />
+                    </Col>
+                    <Col flex="auto">
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {isScored 
+                          ? '✅ 启用后可为每个选项设置分数，用于量表评分计算'
+                          : '⚪ 关闭后此题目不参与总分计算，适用于背景信息收集'
+                        }
+                      </Text>
+                    </Col>
+                  </Row>
+                </Card>
+                
+                {/* 选项列表 */}
                 <Card size="small" style={{ marginBottom: 16 }}>
                   <Space direction="vertical" style={{ width: '100%' }}>
                     {options.map((option, index) => (
-                      <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Text strong style={{ minWidth: 20 }}>
-                          {option.key}:
-                        </Text>
-                        <Input
-                          placeholder={`请输入选项${option.key}的内容`}
-                          value={option.value}
-                          onChange={(e) => handleOptionChange(index, e.target.value)}
-                          style={{ flex: 1 }}
-                          maxLength={100}
-                        />
-                        {options.length > 1 && (
-                          <Button
-                            type="text"
-                            danger
-                            size="small"
-                            icon={<DeleteOutlined />}
-                            onClick={() => handleRemoveOption(index)}
-                            title="删除此选项"
+                      <Row key={index} gutter={8} align="middle">
+                        <Col flex="none">
+                          <Text strong style={{ minWidth: 20 }}>
+                            {option.key}:
+                          </Text>
+                        </Col>
+                        <Col flex="auto">
+                          <Input
+                            placeholder={`请输入选项${option.key}的内容`}
+                            value={option.text}
+                            onChange={(e) => handleOptionTextChange(index, e.target.value)}
+                            maxLength={100}
                           />
+                        </Col>
+                        {isScored && (
+                          <Col flex="none">
+                            <Space>
+                              <Text type="secondary">分数:</Text>
+                              <InputNumber
+                                min={0}
+                                max={100}
+                                value={option.score}
+                                onChange={(value) => handleOptionScoreChange(index, value)}
+                                placeholder="分数"
+                                style={{ width: 80 }}
+                              />
+                            </Space>
+                          </Col>
                         )}
-                      </div>
+                        <Col flex="none">
+                          {options.length > 1 && (
+                            <Button
+                              type="text"
+                              danger
+                              size="small"
+                              icon={<DeleteOutlined />}
+                              onClick={() => handleRemoveOption(index)}
+                              title="删除此选项"
+                            />
+                          )}
+                        </Col>
+                      </Row>
                     ))}
                   </Space>
                   

@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main(): Promise<void> {
-  console.log('🌱 开始播种数据...');
+  console.log('🌱 开始播种心理量表数据...');
 
   // 创建测试教师账号
   const hashedPassword = await bcrypt.hash('123456', 12);
@@ -21,113 +21,369 @@ async function main(): Promise<void> {
 
   console.log('✅ 创建教师账号:', teacher);
 
-  // 创建示例试卷
-  const paper = await prisma.paper.create({
+  // 1. 创建ASQ青少年压力量表 (10维度, 56题)
+  const asqPaper = await prisma.paper.create({
     data: {
-      title: '大学生心理健康状况评估问卷',
-      description: '用于评估大学生心理健康水平的标准化问卷',
+      title: 'ASQ青少年压力量表',
+      description: 'Adolescent Stress Questionnaire (ASQ) scales，用于评估青少年压力水平。量表选项：完全不压力／与我无关（1）、稍微有点压力（2）、中等压力（3）、比较大压力（4）、非常大压力（5）。',
+      scaleType: 'grouped',
+      showScores: true,
+      scaleConfig: {
+        totalQuestions: 56,
+        scoringType: 'sum',
+        scoreRange: { min: 56, max: 280 },
+        description: 'ASQ量表包含10个维度，逐题计1–5分，总压力负荷为56题得分求和，理论范围56–280分。≥常模85百分位需关注，达95百分位以上建议进一步评估。'
+      },
       teacherId: teacher.id,
     },
   });
 
-  console.log('✅ 创建试卷:', paper);
-
-  // 创建示例题目（包含条件逻辑）
-  const questions = [
-    {
-      questionOrder: 1,
-      title: '最近一个月，你感到压力大吗？',
-      options: JSON.stringify({
-        A: '完全没有',
-        B: '偶尔',
-        C: '经常',
-        D: '总是',
-      }),
-      questionType: 'single_choice',
-      displayCondition: Prisma.DbNull,
-    },
-    {
-      questionOrder: 2,
-      title: '你的压力主要来源是什么？',
-      options: JSON.stringify({
-        A: '学业压力',
-        B: '人际关系',
-        C: '经济问题',
-        D: '家庭问题',
-      }),
-      questionType: 'single_choice',
-      displayCondition: JSON.stringify({
-        question_id: '', // 稍后更新
-        selected_option: 'C',
-      }),
-    },
-    {
-      questionOrder: 3,
-      title: '你通常如何缓解压力？',
-      options: JSON.stringify({
-        A: '运动锻炼',
-        B: '听音乐',
-        C: '与朋友聊天',
-        D: '独自思考',
-      }),
-      questionType: 'single_choice',
-      displayCondition: JSON.stringify({
-        question_id: '', // 稍后更新
-        selected_option: 'D',
-      }),
-    },
+  // 创建ASQ的10个维度
+  const asqScales = [
+    { name: '家庭生活', order: 1, questionCount: 12 },
+    { name: '学业表现', order: 2, questionCount: 7 },
+    { name: '上学出勤', order: 3, questionCount: 3 },
+    { name: '恋爱关系', order: 4, questionCount: 5 },
+    { name: '同伴压力', order: 5, questionCount: 7 },
+    { name: '与教师的互动', order: 6, questionCount: 7 },
+    { name: '对未来的不确定感', order: 7, questionCount: 3 },
+    { name: '学校与休闲冲突', order: 8, questionCount: 5 },
+    { name: '财务压力', order: 9, questionCount: 4 },
+    { name: '新晋成年责任', order: 10, questionCount: 3 },
   ];
 
-  // 创建第一个题目
-  const question1 = await prisma.question.create({
-    data: {
-      ...questions[0],
-      paperId: paper.id,
-    },
-  });
+  const createdAsqScales: any[] = [];
+  for (const scale of asqScales) {
+    const createdScale = await prisma.scale.create({
+      data: {
+        paperId: asqPaper.id,
+        scaleName: scale.name,
+        scaleOrder: scale.order,
+      },
+    });
+    createdAsqScales.push(createdScale);
+  }
 
-  // 更新条件逻辑中的question_id
-  const question2 = await prisma.question.create({
-    data: {
-      ...questions[1],
-      paperId: paper.id,
-      displayCondition: JSON.stringify({
-        question_id: question1.id,
-        selected_option: 'C',
-      }),
-    },
-  });
+  // ASQ题目数据 - 家庭生活维度 (12题)
+  const asqFamilyQuestions = [
+    "与父亲的意见不合", "父母不把你当回事", "对自己生活缺乏或毫无掌控", "在家遵守琐碎规矩",
+    "父母之间的争执", "家庭争吵", "与母亲的意见不合", "成年人缺乏对你的信任",
+    "父母对你期望过高", "父母因你的外表而不断唠叨", "与父母同住", "父母缺乏对你的理解"
+  ];
 
-  const question3 = await prisma.question.create({
-    data: {
-      ...questions[2],
-      paperId: paper.id,
-      displayCondition: JSON.stringify({
-        question_id: question1.id,
-        selected_option: 'D',
-      }),
-    },
-  });
+  // 学业表现维度 (7题)
+  const asqAcademicQuestions = [
+    "需要学习你不理解的内容", "老师对你期望过高", "跟上学业进度", "某些学科的学习困难",
+    "上课时间需要长时间集中注意力", "需要学习你不感兴趣的内容", "学习压力"
+  ];
 
-  console.log('✅ 创建题目:', [question1, question2, question3]);
+  // 上学出勤维度 (3题)
+  const asqAttendanceQuestions = [
+    "早起去上学", "强制性上学规定", "去学校"
+  ];
 
-  // 创建示例考试
-  const exam = await prisma.exam.create({
+  // 恋爱关系维度 (5题)
+  const asqRomanticQuestions = [
+    "被心仪对象忽视或拒绝", "维系与男/女朋友的关系", "没有足够时间陪伴男/女朋友",
+    "与男/女朋友相处", "与男/女朋友分手"
+  ];
+
+  // 同伴压力维度 (7题)
+  const asqPeerQuestions = [
+    "因不合群而被同伴刁难", "被朋友评头论足", "随着成长，外貌变化", "为融入同龄群体而承受的压力",
+    "对自己外表的满意度", "同伴因你的外表而刁难你", "与同龄人的意见不合"
+  ];
+
+  // 与教师的互动维度 (7题)
+  const asqTeacherQuestions = [
+    "与老师的意见不合", "对学业反馈不够及时", "老师因你的外表而唠叨", "在校遵守琐碎规矩",
+    "老师不听你说话", "老师缺乏对你的尊重", "与老师相处"
+  ];
+
+  // 对未来的不确定感维度 (3题)
+  const asqFutureQuestions = [
+    "对未来的担忧", "为实现未来目标对自己施压", "必须决定未来工作或教育"
+  ];
+
+  // 学校与休闲冲突维度 (5题)
+  const asqLeisureQuestions = [
+    "没有足够的娱乐时间", "没有足够的休闲时光", "家庭作业太多", "课外活动时间不足", "缺乏自由"
+  ];
+
+  // 财务压力维度 (4题)
+  const asqFinancialQuestions = [
+    "赚更多钱的压力", "没钱买想要的东西", "随着成长不得不承担新责任", "没钱买所需物品"
+  ];
+
+  // 新晋成年责任维度 (3题)
+  const asqAdultQuestions = [
+    "雇主对你期望过高", "随着成长不得不承担新责任", "工作干扰了学习和社交活动"
+  ];
+
+  const allAsqQuestions = [
+    ...asqFamilyQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[0].id, order: i + 1 })),
+    ...asqAcademicQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[1].id, order: i + 13 })),
+    ...asqAttendanceQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[2].id, order: i + 20 })),
+    ...asqRomanticQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[3].id, order: i + 23 })),
+    ...asqPeerQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[4].id, order: i + 28 })),
+    ...asqTeacherQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[5].id, order: i + 35 })),
+    ...asqFutureQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[6].id, order: i + 42 })),
+    ...asqLeisureQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[7].id, order: i + 45 })),
+    ...asqFinancialQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[8].id, order: i + 50 })),
+    ...asqAdultQuestions.map((q, i) => ({ text: q, scaleId: createdAsqScales[9].id, order: i + 54 })),
+  ];
+
+  const asqOptions = {
+    "1": "完全不压力／与我无关",
+    "2": "稍微有点压力", 
+    "3": "中等压力",
+    "4": "比较大压力",
+    "5": "非常大压力"
+  };
+
+  const asqQuestionIds = [];
+  for (const questionData of allAsqQuestions) {
+    const question = await prisma.question.create({
+      data: {
+        paperId: asqPaper.id,
+        scaleId: questionData.scaleId,
+        questionOrder: questionData.order,
+        title: questionData.text,
+        options: asqOptions,
+        questionType: 'single_choice',
+        scoreValue: null, // ASQ题目分数由选项值决定
+        isScored: true,
+        displayCondition: Prisma.DbNull,
+      },
+    });
+    asqQuestionIds.push(question.id);
+  }
+
+  console.log(`✅ 创建ASQ量表: ${createdAsqScales.length}个维度, ${asqQuestionIds.length}道题目`);
+
+  // 2. 创建SCARED儿童焦虑相关障碍筛查表 (扁平结构, 41题)
+  const scaredPaper = await prisma.paper.create({
     data: {
-      title: '2025年春季心理健康普查',
-      paperId: paper.id,
+      title: '儿童焦虑相关障碍筛查表 (SCARED)',
+      description: 'Screen for Child Anxiety Related Emotional Disorders (SCARED)，儿童版，用于筛查儿童焦虑相关障碍。量表选项：完全不符合或几乎不符合（0）、有点符合或有时符合（1）、非常符合或经常符合（2）。针对过去3个月的情况。',
+      scaleType: 'flat',
+      showScores: false,
+      scaleConfig: {
+        totalQuestions: 41,
+        scoringType: 'sum',
+        scoreRange: { min: 0, max: 82 },
+        description: '总分≥25分可能表明存在焦虑障碍。分数高于30分则更具特异性。对于8至11岁的儿童，建议由临床医生解释所有问题。'
+      },
       teacherId: teacher.id,
-      durationMinutes: 30,
-      questionIdsSnapshot: JSON.stringify([question1.id, question2.id, question3.id]),
+    },
+  });
+
+  const scaredQuestions = [
+    "当我感到害怕时，会呼吸困难。", "我在学校时会头痛。", "我不喜欢和不熟的人待在一起。",
+    "如果我不在家睡觉，我会感到害怕。", "我担心别人是否喜欢我。", "当我感到害怕时，我感觉快要昏倒了。",
+    "我很紧张。", "我走到哪里都跟着我的妈妈或爸爸。", "别人说我看起来很紧张。",
+    "和不熟的人在一起时，我会感到紧张。", "我在学校会肚子痛。", "当我感到害怕时，我感觉自己快要疯了。",
+    "我担心一个人睡觉。", "我担心自己是否能和其他孩子一样好。", "当我感到害怕时，我感觉事情不真实。",
+    "我会做噩梦，梦到父母发生不好的事。", "我担心去上学。", "当我感到害怕时，我的心跳会很快。",
+    "我会发抖。", "我会做噩梦，梦到自己发生不好的事。", "我担心事情能否顺利解决。",
+    "当我感到害怕时，我会出很多汗。", "我是一个爱操心的人。", "我会无缘无故地感到非常害怕。",
+    "我害怕一个人在家。", "和不熟的人交谈对我来说很困难。", "当我感到害怕时，我感觉像要窒息。",
+    "别人说我想得太多了。", "我不喜欢离开我的家人。", "我害怕自己会出现焦虑（或惊恐）发作。",
+    "我担心会有不好的事情发生在我父母身上。", "和不熟的人在一起时，我会感到害羞。", "我担心未来会发生什么。",
+    "当我感到害怕时，我感觉想吐。", "我担心自己事情做得好不好。", "我害怕去上学。",
+    "我担心已经发生过的事情。", "当我感到害怕时，我感到头晕。",
+    "当我和其他孩子或大人在一起，并且必须在他们注视下做某件事（例如：朗读、说话、玩游戏、做运动）时，我会感到紧张。",
+    "当我要去参加派对、舞会或任何有不熟的人在场的地方时，我会感到紧张。", "我很害羞。"
+  ];
+
+  const scaredOptions = {
+    "0": "完全不符合或几乎不符合",
+    "1": "有点符合或有时符合",
+    "2": "非常符合或经常符合"
+  };
+
+  const scaredQuestionIds = [];
+  for (let i = 0; i < scaredQuestions.length; i++) {
+    const question = await prisma.question.create({
+      data: {
+        paperId: scaredPaper.id,
+        scaleId: null, // 扁平结构，无维度分组
+        questionOrder: i + 1,
+        title: scaredQuestions[i],
+        options: scaredOptions,
+        questionType: 'single_choice',
+        scoreValue: null, // 分数由选项值决定
+        isScored: true,
+        displayCondition: Prisma.DbNull,
+      },
+    });
+    scaredQuestionIds.push(question.id);
+  }
+
+  console.log(`✅ 创建SCARED量表: 扁平结构, ${scaredQuestionIds.length}道题目`);
+
+  // 3. 创建SCAS斯宾思儿童焦虑量表 (6维度 + 填充项)
+  const scasPaper = await prisma.paper.create({
+    data: {
+      title: '斯宾思儿童焦虑量表 (SCAS)',
+      description: 'Spence Children\'s Anxiety Scale (SCAS)，儿童版，用于评估儿童焦虑水平。量表选项：从不（0）、有时（1）、经常（2）、总是（3）。共38个焦虑项计分，7个填充项不计分。',
+      scaleType: 'grouped',
+      showScores: true,
+      scaleConfig: {
+        totalQuestions: 45,
+        scoredQuestions: 38,
+        fillerQuestions: 7,
+        scoringType: 'sum',
+        scoreRange: { min: 0, max: 114 },
+        description: '逐题计分：从不=0，有时=1，经常=2，总是=3。总分为38个焦虑项求和，最大114分。填充项不计分。使用T分数表解释：T<60正常，T≥60升高焦虑，T=65前6%，T=70前2%。'
+      },
+      teacherId: teacher.id,
+    },
+  });
+
+  // 创建SCAS的6个维度
+  const scasScales = [
+    { name: '分离焦虑 (Separation Anxiety)', order: 1 },
+    { name: '社交恐惧 (Social Phobia)', order: 2 },
+    { name: '强迫症 (Obsessive-Compulsive Disorder)', order: 3 },
+    { name: '惊恐发作和广场恐惧 (Panic Attack and Agoraphobia)', order: 4 },
+    { name: '身体伤害恐惧 (Physical Injury Fears)', order: 5 },
+    { name: '广泛性焦虑障碍 (Generalized Anxiety Disorder)', order: 6 },
+  ];
+
+  const createdScasScales: any[] = [];
+  for (const scale of scasScales) {
+    const createdScale = await prisma.scale.create({
+      data: {
+        paperId: scasPaper.id,
+        scaleName: scale.name,
+        scaleOrder: scale.order,
+      },
+    });
+    createdScasScales.push(createdScale);
+  }
+
+  // SCAS题目数据 (按ID顺序，1-45)
+  const scasAllQuestions = [
+    { id: 1, text: "我担心各种事情", scaleIndex: 5, isScored: true }, // 广泛性焦虑
+    { id: 2, text: "我怕黑", scaleIndex: 4, isScored: true }, // 身体伤害恐惧
+    { id: 3, text: "一遇到问题，我的胃部就有不舒服的感觉", scaleIndex: 5, isScored: true }, // 广泛性焦虑
+    { id: 4, text: "我感到害怕", scaleIndex: 5, isScored: true }, // 广泛性焦虑
+    { id: 5, text: "要我自己一个人呆在家里，我会害怕的", scaleIndex: 0, isScored: true }, // 分离焦虑
+    { id: 6, text: "要考试时我会感到恐慌", scaleIndex: 1, isScored: true }, // 社交恐惧
+    { id: 7, text: "我害怕用公共厕所或公共浴室", scaleIndex: 1, isScored: true }, // 社交恐惧
+    { id: 8, text: "我担心离开父母", scaleIndex: 0, isScored: true }, // 分离焦虑
+    { id: 9, text: "我怕我会在别人面前出丑", scaleIndex: 1, isScored: true }, // 社交恐惧
+    { id: 10, text: "我担心我的学校功课会做得很差", scaleIndex: 1, isScored: true }, // 社交恐惧
+    { id: 11, text: "在同龄孩子中我很受欢迎", scaleIndex: -1, isScored: false }, // 填充项
+    { id: 12, text: "我担心家里有人会出事", scaleIndex: 0, isScored: true }, // 分离焦虑
+    { id: 13, text: "我无缘无故地突然觉得自己好像透不过气来", scaleIndex: 3, isScored: true }, // 惊恐发作
+    { id: 14, text: "我必须不断检查自己有没有把事情做好（比如开关关好了没有，门锁好了没有）", scaleIndex: 2, isScored: true }, // 强迫症
+    { id: 15, text: "如果叫我自己一个人睡觉我就觉得恐慌", scaleIndex: 0, isScored: true }, // 分离焦虑
+    { id: 16, text: "早晨上学去对我来说是很苦恼的，因为我感到紧张或害怕", scaleIndex: 0, isScored: true }, // 分离焦虑
+    { id: 17, text: "我擅长于体育运动", scaleIndex: -1, isScored: false }, // 填充项
+    { id: 18, text: "我怕狗", scaleIndex: 4, isScored: true }, // 身体伤害恐惧
+    { id: 19, text: "我似乎不能摆脱头脑里一些不好的或愚蠢的想法", scaleIndex: 2, isScored: true }, // 强迫症
+    { id: 20, text: "我遇到问题时，心跳得很快", scaleIndex: 5, isScored: true }, // 广泛性焦虑
+    { id: 21, text: "我无缘无故地突然开始颤抖或发抖", scaleIndex: 3, isScored: true }, // 惊恐发作
+    { id: 22, text: "我担心什么不好的事情会在自己身上发生", scaleIndex: 5, isScored: true }, // 广泛性焦虑
+    { id: 23, text: "去看医生或牙医我很恐慌", scaleIndex: 4, isScored: true }, // 身体伤害恐惧
+    { id: 24, text: "当我遇到问题时，我感到紧张发抖", scaleIndex: 5, isScored: true }, // 广泛性焦虑
+    { id: 25, text: "在高处或电梯里我会很恐慌", scaleIndex: 4, isScored: true }, // 身体伤害恐惧
+    { id: 26, text: "我是个好人", scaleIndex: -1, isScored: false }, // 填充项
+    { id: 27, text: "我必须去想一些特殊的想法（比如数字或词语）以阻止坏事的发生", scaleIndex: 2, isScored: true }, // 强迫症
+    { id: 28, text: "如果我必需乘车（汽车或火车）旅行，我就感到恐慌", scaleIndex: 3, isScored: true }, // 惊恐发作
+    { id: 29, text: "我担心别人对我怎么想", scaleIndex: 1, isScored: true }, // 社交恐惧
+    { id: 30, text: "我害怕呆在拥挤的地方（如购物中心、电影院、公共汽车、热闹的游乐场）", scaleIndex: 3, isScored: true }, // 惊恐发作
+    { id: 31, text: "我感到开心", scaleIndex: -1, isScored: false }, // 填充项
+    { id: 32, text: "根本没有什么原因，突然间我觉得非常恐慌", scaleIndex: 3, isScored: true }, // 惊恐发作
+    { id: 33, text: "我怕小虫子或蜘蛛", scaleIndex: 4, isScored: true }, // 身体伤害恐惧
+    { id: 34, text: "无缘无故地，我突然头晕目眩好像要昏倒了", scaleIndex: 3, isScored: true }, // 惊恐发作
+    { id: 35, text: "如果我必需在全班同学面前讲话我就感到害怕", scaleIndex: 1, isScored: true }, // 社交恐惧
+    { id: 36, text: "没有什么原因我的心突然跳得太快了", scaleIndex: 3, isScored: true }, // 惊恐发作
+    { id: 37, text: "我担心即使在没有什么东西可害怕时自己会突然产生恐慌的感觉", scaleIndex: 3, isScored: true }, // 惊恐发作
+    { id: 38, text: "我喜欢我自己", scaleIndex: -1, isScored: false }, // 填充项
+    { id: 39, text: "我害怕呆在狭小封闭的地方，比如隧道或小房间", scaleIndex: 3, isScored: true }, // 惊恐发作
+    { id: 40, text: "有些事情我必须一遍遍地反复做（比如洗手，打扫卫生，或把东西按照固定的次序放好）", scaleIndex: 2, isScored: true }, // 强迫症
+    { id: 41, text: "我脑子里不好或愚蠢的想法或形象令我困惑不安", scaleIndex: 2, isScored: true }, // 强迫症
+    { id: 42, text: "我必须以特定的恰当方式去做某些事情以阻止坏事的发生", scaleIndex: 2, isScored: true }, // 强迫症
+    { id: 43, text: "我对自己的学校功课引以为豪", scaleIndex: -1, isScored: false }, // 填充项
+    { id: 44, text: "如果要我离家在外过夜我会觉得很恐慌", scaleIndex: 0, isScored: true }, // 分离焦虑
+    { id: 45, text: "还有其它什么你真的很害怕？（有/没有，如果有，写下来并评分）", scaleIndex: -1, isScored: false }, // 开放式，不计分
+  ];
+
+  const scasOptions = {
+    "0": "从不",
+    "1": "有时",
+    "2": "经常",
+    "3": "总是"
+  };
+
+  const scasQuestionIds = [];
+  for (const questionData of scasAllQuestions) {
+    const question = await prisma.question.create({
+      data: {
+        paperId: scasPaper.id,
+        scaleId: questionData.scaleIndex >= 0 ? createdScasScales[questionData.scaleIndex].id : null,
+        questionOrder: questionData.id,
+        title: questionData.text,
+        options: scasOptions,
+        questionType: 'single_choice',
+        scoreValue: null, // 分数由选项值决定
+        isScored: questionData.isScored,
+        displayCondition: Prisma.DbNull,
+      },
+    });
+    scasQuestionIds.push(question.id);
+  }
+
+  const scasScored = scasAllQuestions.filter(q => q.isScored).length;
+  const scasFiller = scasAllQuestions.filter(q => !q.isScored).length;
+  console.log(`✅ 创建SCAS量表: ${createdScasScales.length}个维度, ${scasQuestionIds.length}道题目 (${scasScored}计分 + ${scasFiller}填充)`);
+
+  // 创建考试实例
+  const asqExam = await prisma.exam.create({
+    data: {
+      title: '2025年ASQ青少年压力评估测试',
+      paperId: asqPaper.id,
+      teacherId: teacher.id,
+      durationMinutes: 45,
+      questionIdsSnapshot: asqQuestionIds,
       status: 'PUBLISHED',
     },
   });
 
-  console.log('✅ 创建考试:', exam);
+  const scaredExam = await prisma.exam.create({
+    data: {
+      title: '2025年SCARED儿童焦虑筛查测试',
+      paperId: scaredPaper.id,
+      teacherId: teacher.id,
+      durationMinutes: 30,
+      questionIdsSnapshot: scaredQuestionIds,
+      status: 'PUBLISHED',
+    },
+  });
 
-  console.log('🎉 数据播种完成！');
+  const scasExam = await prisma.exam.create({
+    data: {
+      title: '2025年SCAS斯宾思儿童焦虑量表测试',
+      paperId: scasPaper.id,
+      teacherId: teacher.id,
+      durationMinutes: 35,
+      questionIdsSnapshot: scasQuestionIds,
+      status: 'PUBLISHED',
+    },
+  });
+
+  console.log('🎉 心理量表数据播种完成！');
   console.log(`📚 教师账号: T2025001 / 123456`);
-  console.log(`🔗 考试链接: http://localhost:3000/exam/${exam.publicUuid}`);
+  console.log(`🔗 ASQ压力测评: http://localhost:5173/exam/${asqExam.publicUuid}`);
+  console.log(`🔗 SCARED焦虑筛查: http://localhost:5173/exam/${scaredExam.publicUuid}`);
+  console.log(`🔗 SCAS焦虑量表: http://localhost:5173/exam/${scasExam.publicUuid}`);
+  console.log(`📊 数据统计:`);
+  console.log(`   - ASQ: 10维度, 56题 (1-5分制, 总分56-280)`);
+  console.log(`   - SCARED: 扁平结构, 41题 (0-2分制, 总分0-82)`);
+  console.log(`   - SCAS: 6维度, 45题 (0-3分制, 38计分题最大114分)`);
 }
 
 main()

@@ -32,7 +32,6 @@ import {
   ExperimentOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
-  SettingOutlined,
   ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { paperApi, questionApi } from '../services/api';
@@ -556,22 +555,14 @@ const PaperDetail: React.FC = () => {
             
             {/* 右侧操作区 */}
             <Col>
-              <Space>
-                <Button 
-                  type="primary" 
-                  icon={<PlusOutlined />}
-                  size="large"
-                  onClick={handleCreateQuestion}
-                >
-                  添加题目
-                </Button>
-                <Button 
-                  icon={<SettingOutlined />}
-                  size="large"
-                >
-                  试卷设置
-                </Button>
-              </Space>
+              <Button 
+                type="primary" 
+                icon={<PlusOutlined />}
+                size="large"
+                onClick={handleCreateQuestion}
+              >
+                添加题目
+              </Button>
             </Col>
           </Row>
         </Card>
@@ -608,18 +599,9 @@ const PaperDetail: React.FC = () => {
               </Select>
             </Col>
             <Col span={10}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography.Text type="secondary">
-                  显示 {getFilteredQuestions().length} / {questions.length} 题
-                </Typography.Text>
-                <Button
-                  type="primary" 
-                  icon={<PlusOutlined />}
-                  onClick={handleCreateQuestion}
-                >
-                  添加题目
-                </Button>
-              </div>
+              <Typography.Text type="secondary">
+                显示 {getFilteredQuestions().length} / {questions.length} 题
+              </Typography.Text>
             </Col>
           </Row>
         </Card>

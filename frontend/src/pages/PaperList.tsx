@@ -34,8 +34,6 @@ import {
   CalendarOutlined,
   SearchOutlined,
   FilterOutlined,
-  MoreOutlined,
-  SettingOutlined,
   ExperimentOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -265,7 +263,7 @@ const PaperList: React.FC = () => {
     {
       title: '统计信息',
       key: 'stats',
-      width: 200,
+      width: 160,
       render: (_, record: Paper) => (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -292,7 +290,7 @@ const PaperList: React.FC = () => {
     {
       title: '状态',
       key: 'status',
-      width: 120,
+      width: 240,
       render: (_, record: Paper) => {
         const isActive = record.question_count > 0;
         const hasExams = record.exam_count > 0;
@@ -406,24 +404,15 @@ const PaperList: React.FC = () => {
               </Space>
             </Col>
             <Col>
-              <Space>
-                <Button 
-                  type="primary" 
-                  icon={<PlusOutlined />}
-                  size="large"
-                  onClick={handleCreate}
-                  className="shadow-lg"
-                >
-                  创建试卷
-                </Button>
-                <Button 
-                  icon={<SettingOutlined />}
-                  size="large"
-                  className="hover:bg-primary-50"
-                >
-                  批量管理
-                </Button>
-              </Space>
+              <Button 
+                type="primary" 
+                icon={<PlusOutlined />}
+                size="large"
+                onClick={handleCreate}
+                className="shadow-lg"
+              >
+                创建试卷
+              </Button>
             </Col>
           </Row>
         </div>
@@ -548,14 +537,7 @@ const PaperList: React.FC = () => {
             </Space>
           </Col>
           <Col xs={24} md={8} className="text-right">
-            <Space>
-              <Button 
-                icon={<MoreOutlined />}
-                className="hover:bg-primary-50"
-              >
-                更多操作
-              </Button>
-            </Space>
+            {/* 更多操作按钮已移除，保留布局结构 */}
           </Col>
         </Row>
       </Card>
@@ -567,7 +549,6 @@ const PaperList: React.FC = () => {
           flex: 1, 
           display: 'flex', 
           flexDirection: 'column',
-          overflow: 'hidden',
         }}
         bodyStyle={{ 
           flex: 1, 
@@ -623,7 +604,7 @@ const PaperList: React.FC = () => {
             dataSource={filteredPapers}
             loading={loading}
             rowKey="id"
-            scroll={{ x: 900, y: 'calc(100vh - 420px)' }}
+            scroll={{ x: 900, y: 'calc(100vh - 800px)' }}
             className="modern-table"
             pagination={{
               showSizeChanger: true,

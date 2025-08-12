@@ -90,11 +90,11 @@ export const getTeacherAnalytics = async (req: Request, res: Response): Promise<
       },
     });
 
-    // 计算平均完成率
+    // 计算平均参与率（更适合心理测试场景）
     const examsWithResults = await prisma.exam.findMany({
       where: {
         teacherId,
-        status: ExamStatus.PUBLISHED,
+        status: { in: [ExamStatus.PUBLISHED, ExamStatus.SUCCESS, ExamStatus.EXPIRED] },
         createdAt: {
           gte: startDate,
         },
@@ -108,8 +108,9 @@ export const getTeacherAnalytics = async (req: Request, res: Response): Promise<
       },
     });
 
+    // 计算平均参与率：有参与者的考试占所有考试的百分比
     const avgCompletionRate = examsWithResults.length > 0 
-      ? examsWithResults.reduce((sum, exam) => sum + (exam._count.results > 0 ? 100 : 0), 0) / examsWithResults.length
+      ? (examsWithResults.filter(exam => exam._count.results > 0).length / examsWithResults.length) * 100
       : 0;
 
     // 获取月度趋势数据
@@ -357,20 +358,9 @@ async function getMonthlyTrends(teacherId: string) {
         }),
       ]);
 
-      // 计算当月完成率（简化计算）
-      const publishedExams = await prisma.exam.count({
-        where: {
-          teacherId,
-          status: ExamStatus.PUBLISHED,
-          createdAt: {
-            gte: start,
-            lte: end,
-          },
-        },
-      });
-
-      const completionRate = publishedExams > 0 && participants > 0 
-        ? Math.min(100, Math.round((participants / publishedExams) * 100)) 
+      // 计算当月参与率（考试平均参与人数）
+      const completionRate = examsCreated > 0 && participants > 0
+        ? Math.round((participants / examsCreated) * 10) / 10  // 每个考试的平均参与人数
         : 0;
 
       return {
@@ -443,7 +433,7 @@ async function getExamPerformance(teacherId: string, startDate: Date) {
       paper_title: exam.paper.title,
       status: exam.status, // 添加考试状态字段
       participant_count: participantCount,
-      completion_rate: participantCount > 0 ? 100 : 0, // 简化的完成率计算
+      completion_rate: 0, // 心理测试场景下不使用完成率概念
       avg_score: Math.round(avgScore * 10) / 10,
       avg_duration: Math.round(avgDuration * 10) / 10,
       created_at: exam.createdAt.toISOString(),

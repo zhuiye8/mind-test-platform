@@ -258,7 +258,7 @@ export const antdTheme: ThemeConfig = {
     motionDurationSlow: designTokens.animation.duration.slow,
     motionEaseInOut: designTokens.animation.easing.easeInOut,
     motionEaseOut: designTokens.animation.easing.easeOut,
-    motionEaseIn: designTokens.animation.easing.easeIn,
+    // motionEaseIn: designTokens.animation.easing.easeIn, // 不支持的属性
   },
   
   components: {
@@ -269,14 +269,14 @@ export const antdTheme: ThemeConfig = {
       siderBg: designTokens.colors.background.primary,
       footerBg: designTokens.colors.background.primary,
       headerHeight: 64,
-      siderWidth: 256,
-      collapsedWidth: 80,
+      // siderWidth: 256, // 不支持的属性
+      // collapsedWidth: 80, // 不支持的属性
     },
     
     // Card组件
     Card: {
       boxShadow: designTokens.boxShadow.sm,
-      boxShadowHover: designTokens.boxShadow.md,
+      // boxShadowHover: designTokens.boxShadow.md, // 不支持的属性
       borderRadius: parseInt(designTokens.borderRadius.lg),
       padding: parseInt(designTokens.spacing[6]),
       paddingSM: parseInt(designTokens.spacing[4]),
@@ -346,10 +346,10 @@ export const antdTheme: ThemeConfig = {
     // Tag组件
     Tag: {
       borderRadiusSM: parseInt(designTokens.borderRadius.full),
-      paddingInline: parseInt(designTokens.spacing[2]),
-      paddingBlock: parseInt(designTokens.spacing[1]),
+      // paddingInline: parseInt(designTokens.spacing[2]), // 不支持的属性
+      // paddingBlock: parseInt(designTokens.spacing[1]), // 不支持的属性
       fontSize: parseInt(designTokens.typography.fontSize.xs),
-      fontWeight: parseInt(designTokens.typography.fontWeight.medium),
+      // fontWeight: parseInt(designTokens.typography.fontWeight.medium), // 不支持的属性
     },
     
     // Statistic组件
