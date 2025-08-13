@@ -24,7 +24,7 @@ const Login: React.FC = () => {
       if (response.success && response.data) {
         setAuthToken(response.data.token);
         setTeacherInfo(response.data.teacher);
-        message.success('登录成功！即将跳转到仪表盘...');
+        message.success('登录成功！');
         navigate('/dashboard');
       } else {
         // 后端验证失败，但请求成功
