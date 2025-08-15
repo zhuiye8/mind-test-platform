@@ -181,6 +181,7 @@ model ExamResult {
   submittedAt            DateTime  @default(now()) @map("submitted_at")
 
   // AI功能相关字段
+  aiSessionId            String?   @map("ai_session_id") // AI分析会话ID (http://192.168.9.84:5000)
   emotionAnalysisId       String?   @map("emotion_analysis_id") // 情绪分析会话ID
   timelineData           Json?     @map("timeline_data") // 时间线数据
   voiceInteractions      Json?     @map("voice_interactions") // 语音交互数据
@@ -198,6 +199,7 @@ model ExamResult {
   @@index([examId, participantName]) // 按考试ID和参与者姓名搜索
   @@index([submittedAt(sort: Desc)]) // 按提交时间查询所有结果
   @@index([totalTimeSeconds]) // 按总用时查询（AI分析用）
+  @@index([aiSessionId]) // AI会话查询优化
   @@index([emotionAnalysisId]) // AI功能查询优化
 
   // 唯一约束：防止重复提交

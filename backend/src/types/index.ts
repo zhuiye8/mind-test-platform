@@ -63,8 +63,7 @@ export interface SubmitExamRequest {
   student_name: string;
   answers: ExamAnswers;
   started_at?: string; // 答题开始时间（ISO格式字符串）
-  // AI功能相关数据
-  emotion_analysis_id?: string;
+  // AI功能相关数据（已简化，emotion_analysis_id由外部AI服务管理）
   timeline_data?: any;
   voice_interactions?: any;
   device_test_results?: any;

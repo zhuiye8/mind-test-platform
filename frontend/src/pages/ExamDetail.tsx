@@ -26,9 +26,11 @@ import {
   EyeOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
+  RobotOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { examApi } from '../services/api';
+import { examApi, aiApi } from '../services/api';
 import type { Exam, ExamResult } from '../types';
 import { ExamStatus, getStatusColor, getStatusName } from '../constants/examStatus';
 import type { ExamStatusType } from '../constants/examStatus';
@@ -45,6 +47,7 @@ const ExamDetail: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [resultsLoading, setResultsLoading] = useState(false);
   const [toggleLoading, setToggleLoading] = useState(false);
+  const [aiGeneratingMap, setAiGeneratingMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (examId) {
@@ -193,6 +196,79 @@ const ExamDetail: React.FC = () => {
     }
   };
 
+  // 生成AI分析报告
+  const handleGenerateAIReport = async (examResult: ExamResult) => {
+    if (!examResult.id || aiGeneratingMap[examResult.id]) return;
+
+    try {
+      // 设置生成状态
+      setAiGeneratingMap(prev => ({ ...prev, [examResult.id]: true }));
+
+      console.log(`[AI分析] 开始为考试结果 ${examResult.id} 生成AI报告`);
+
+      const response = await aiApi.generateReport(examResult.id);
+
+      if (response.success && response.data) {
+        message.success('AI分析报告生成成功！');
+        
+        // 显示报告内容
+        modal.info({
+          title: `${examResult.participant_name} 的AI心理分析报告`,
+          width: 800,
+          icon: <RobotOutlined style={{ color: '#1890ff' }} />,
+          content: (
+            <div style={{ maxHeight: 600, overflow: 'auto' }}>
+              <div style={{ 
+                whiteSpace: 'pre-wrap', 
+                lineHeight: 1.6,
+                fontSize: '14px',
+                background: '#f5f5f5',
+                padding: '16px',
+                borderRadius: '8px',
+                marginTop: '16px'
+              }}>
+                {response.data.report}
+              </div>
+              {response.data.reportFile && (
+                <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                  <Text type="secondary">
+                    报告文件: {response.data.reportFile}
+                  </Text>
+                </div>
+              )}
+            </div>
+          ),
+          okText: '关闭',
+        });
+
+        console.log(`[AI分析] 报告生成成功，文件: ${response.data.reportFile}`);
+      } else {
+        message.error(response.error || 'AI分析报告生成失败');
+        console.error('[AI分析] 报告生成失败:', response.error);
+      }
+    } catch (error: any) {
+      console.error('[AI分析] 生成报告时发生错误:', error);
+      message.error(error.response?.data?.error || 'AI分析服务连接失败');
+    } finally {
+      // 清除生成状态
+      setAiGeneratingMap(prev => ({ ...prev, [examResult.id]: false }));
+    }
+  };
+
+  // 检查AI会话状态（暂时未使用，预留功能）
+  // const checkAISessionStatus = async (examResultId: string): Promise<boolean> => {
+  //   try {
+  //     const response = await aiApi.getReportStatus(examResultId);
+  //     if (response.success && response.data) {
+  //       return response.data.hasAISession;
+  //     }
+  //     return false;
+  //   } catch (error) {
+  //     console.warn('[AI分析] 检查AI会话状态失败:', error);
+  //     return false;
+  //   }
+  // };
+
   // 使用常量文件中的函数
   // const getStatusColor = getStatusColor; // 已导入
 
@@ -324,31 +400,46 @@ const ExamDetail: React.FC = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 100,
+      width: 180,
       render: (_, record: ExamResult) => (
-        <Tooltip title="查看详细答案">
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => {
-              modal.info({
-                title: `${record.participant_name} 的答案详情`,
-                width: 900,
-                icon: null,
-                content: (
-                  <StudentAnswerDetail 
-                    examResult={record} 
-                    examId={examId!} 
-                  />
-                ),
-                okText: '关闭',
-              });
-            }}
-          >
-            查看
-          </Button>
-        </Tooltip>
+        <Space size={4}>
+          <Tooltip title="查看详细答案">
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => {
+                modal.info({
+                  title: `${record.participant_name} 的答案详情`,
+                  width: 900,
+                  icon: null,
+                  content: (
+                    <StudentAnswerDetail 
+                      examResult={record} 
+                      examId={examId!} 
+                    />
+                  ),
+                  okText: '关闭',
+                });
+              }}
+            >
+              查看
+            </Button>
+          </Tooltip>
+          
+          <Tooltip title="生成AI心理分析报告">
+            <Button
+              type="link"
+              size="small"
+              icon={aiGeneratingMap[record.id] ? <LoadingOutlined /> : <RobotOutlined />}
+              loading={aiGeneratingMap[record.id]}
+              onClick={() => handleGenerateAIReport(record)}
+              style={{ color: '#1890ff' }}
+            >
+              AI分析
+            </Button>
+          </Tooltip>
+        </Space>
       ),
     },
   ];

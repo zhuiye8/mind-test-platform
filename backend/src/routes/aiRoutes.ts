@@ -1,36 +1,26 @@
-import express from 'express';
-import {
-  createEmotionSession,
-  endEmotionSession,
-  generateReport,
-  getReportStatus,
-  downloadReport,
-  getReports,
-} from '../controllers/aiController';
+/**
+ * AI分析功能路由
+ * 主要提供教师端的AI分析功能
+ */
+
+import { Router } from 'express';
 import { authenticateToken } from '../middleware/auth';
+import {
+  generateAIReport,
+  getAIReportStatus,
+  checkAIServiceHealth,
+  endAISession,
+} from '../controllers/aiController';
 
-const router = express.Router();
+const router = Router();
 
-// 情绪分析相关路由
-router.post('/emotion/session', createEmotionSession);
-router.post('/emotion/session/:sessionId/end', endEmotionSession);
+// 所有AI路由都需要教师认证
+router.use(authenticateToken);
 
-// AI报告相关路由
-router.post('/report/generate', generateReport);
-router.get('/report/:reportId/status', getReportStatus);
-router.get('/report/:reportId/download', downloadReport);
-router.get('/reports', getReports);
-
-// 需要认证的管理员路由
-router.get('/admin/reports', authenticateToken, async (_req, res) => {
-  // 管理员查看所有报告
-  // 这里可以添加管理员权限检查
-  res.json({ message: '管理员报告列表功能待实现' });
-});
-
-router.delete('/admin/report/:reportId', authenticateToken, async (_req, res) => {
-  // 管理员删除报告
-  res.json({ message: '删除报告功能待实现' });
-});
+// AI分析相关接口
+router.post('/exam-results/:examResultId/generate-report', generateAIReport);  // 生成AI分析报告
+router.get('/exam-results/:examResultId/report-status', getAIReportStatus);    // 获取报告状态
+router.post('/exam-results/:examResultId/end-session', endAISession);          // 手动结束AI会话
+router.get('/service/health', checkAIServiceHealth);                           // AI服务健康检查
 
 export default router;

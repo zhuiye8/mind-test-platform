@@ -298,19 +298,83 @@ export const publicApi = {
     return api.post(`/public/exams/${uuid}/check-duplicate`, { student_id });
   },
 
+  // 创建AI分析会话
+  createAISession: (uuid: string, data: {
+    student_id: string;
+    student_name: string;
+    started_at?: string; // 考试开始时间（ISO格式）
+  }): Promise<ApiResponse<{
+    examResultId: string | null;
+    aiSessionId: string | null;
+    message: string;
+    warning?: string;
+  }>> => {
+    return api.post(`/public/exams/${uuid}/create-ai-session`, data);
+  },
+
+  // 重试AI分析会话
+  retryAISession: (uuid: string, data: {
+    student_id: string;
+    student_name: string;
+  }): Promise<ApiResponse<{
+    examResultId: string | null;
+    aiSessionId: string | null;
+    message: string;
+    warning?: string;
+  }>> => {
+    return api.post(`/public/exams/${uuid}/retry-ai-session`, data);
+  },
+
   // 提交考试答案
   submitExam: (uuid: string, data: {
     student_id: string;
     student_name: string;
     answers: Record<string, any>;
     started_at?: string; // 答题开始时间（ISO格式）
-    // AI功能相关数据
-    emotion_analysis_id?: string;
+    // AI功能相关数据（已简化）
     timeline_data?: any;
     voice_interactions?: any;
     device_test_results?: any;
   }): Promise<ApiResponse<{ result_id: string }>> => {
     return api.post(`/public/exams/${uuid}/submit`, data);
+  },
+};
+
+// AI分析相关API（教师端使用）
+export const aiApi = {
+  // 生成AI分析报告
+  generateReport: (examResultId: string): Promise<ApiResponse<{
+    report: string;
+    reportFile?: string;
+    message: string;
+  }>> => {
+    return api.post(`/teacher/ai/exam-results/${examResultId}/generate-report`);
+  },
+
+  // 获取AI报告状态
+  getReportStatus: (examResultId: string): Promise<ApiResponse<{
+    hasAISession: boolean;
+    aiSessionId: string | null;
+    latestReport: any | null;
+  }>> => {
+    return api.get(`/teacher/ai/exam-results/${examResultId}/report-status`);
+  },
+
+  // 检查AI服务健康状态
+  checkServiceHealth: (): Promise<ApiResponse<{
+    healthy: boolean;
+    service: any;
+    timestamp: string;
+  }>> => {
+    return api.get('/teacher/ai/service/health');
+  },
+
+  // 手动结束AI分析会话
+  endAISession: (examResultId: string): Promise<ApiResponse<{
+    success: boolean;
+    message: string;
+  }>> => {
+    return api.post(`/teacher/ai/exam-results/${examResultId}/end-session`);
   },
 };
 

@@ -23,9 +23,9 @@ router.get('/', (_req, res) => {
         papers: '/api/teacher/papers',
         exams: '/api/teacher/exams',
         analytics: '/api/teacher/analytics',
+        ai: '/api/teacher/ai',
       },
       public: '/api/public',
-      ai: '/api/ai',
       voice: '/api/voice',
       reports: '/api/reports',
       audio: '/api/audio',
@@ -40,7 +40,7 @@ router.use('/teacher/papers', paperRoutes);   // 教师端试卷管理路由
 router.use('/teacher/exams', examRoutes);     // 教师端考试管理路由
 router.use('/teacher/analytics', analyticsRoutes); // 教师端分析数据路由
 router.use('/public', publicRoutes);          // 公开接口路由
-router.use('/ai', aiRoutes);                  // AI功能相关路由
+router.use('/teacher/ai', aiRoutes);          // AI功能相关路由（教师端）
 router.use('/voice', voiceRoutes);            // 语音识别匹配路由
 router.use('/reports', reportRoutes);         // AI报告生成路由
 router.use('/audio', audioRoutes);            // 语音文件管理路由

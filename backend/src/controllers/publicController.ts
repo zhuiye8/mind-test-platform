@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/response';
 import { VerifyExamPasswordRequest, SubmitExamRequest, ExamStatus } from '../types';
 import prisma from '../utils/database';
+import { aiAnalysisService } from '../services/aiAnalysisService';
 // import cache, { CacheManager } from '../utils/cache'; // 已移除缓存
 
 // 获取公开考试信息
@@ -201,6 +202,237 @@ export const checkDuplicateSubmission = async (req: Request, res: Response): Pro
   }
 };
 
+// 重试AI分析会话
+export const retryAISession = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { publicUuid } = req.params;
+    const { student_id, student_name } = req.body;
+
+    // 参数验证
+    if (!student_id || !student_name) {
+      sendError(res, '学号和姓名不能为空', 400);
+      return;
+    }
+
+    // 获取考试信息
+    const exam = await prisma.exam.findUnique({
+      where: { publicUuid },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        startTime: true,
+        endTime: true,
+      },
+    });
+
+    if (!exam) {
+      sendError(res, '考试不存在', 404);
+      return;
+    }
+
+    if (exam.status !== ExamStatus.PUBLISHED) {
+      sendError(res, '考试尚未发布', 403);
+      return;
+    }
+
+    // 检查考试时间
+    const now = new Date();
+    if (exam.startTime && now < exam.startTime) {
+      sendError(res, '考试尚未开始', 403);
+      return;
+    }
+    if (exam.endTime && now > exam.endTime) {
+      sendError(res, '考试已结束', 403);
+      return;
+    }
+
+    // 查找现有的考试结果记录（应该在之前的创建过程中生成）
+    const existingResult = await prisma.examResult.findUnique({
+      where: {
+        examId_participantId: {
+          examId: exam.id,
+          participantId: student_id,
+        },
+      },
+    });
+
+    if (!existingResult) {
+      sendError(res, '未找到考试记录，请重新开始考试', 404);
+      return;
+    }
+
+    // 检查是否已经提交
+    if (existingResult.submittedAt.getTime() !== new Date('1970-01-01').getTime()) {
+      sendError(res, '您已经提交过本次考试，无法重试', 409);
+      return;
+    }
+
+    // 如果已经有AI会话ID，说明之前成功过，无需重试
+    if (existingResult.aiSessionId) {
+      sendSuccess(res, {
+        examResultId: existingResult.id,
+        aiSessionId: existingResult.aiSessionId,
+        message: 'AI分析会话已存在，无需重试',
+      });
+      return;
+    }
+
+    try {
+      // 重新尝试创建AI分析会话
+      const aiResult = await aiAnalysisService.createSession(
+        existingResult.id,
+        student_id,
+        exam.id
+      );
+
+      if (aiResult.success) {
+        console.log(`✅ 学生 ${student_name}(${student_id}) 重试创建AI会话成功: ${aiResult.sessionId}`);
+        
+        sendSuccess(res, {
+          examResultId: existingResult.id,
+          aiSessionId: aiResult.sessionId,
+          message: 'AI分析会话重试创建成功',
+        });
+      } else {
+        console.warn(`⚠️ 学生 ${student_name}(${student_id}) 重试创建AI会话失败: ${aiResult.error}`);
+        
+        sendSuccess(res, {
+          examResultId: existingResult.id,
+          aiSessionId: null,
+          message: 'AI分析服务暂时不可用，但可以正常参加考试',
+          warning: aiResult.error,
+        });
+      }
+    } catch (error: any) {
+      console.error('[AI分析] 重试创建会话失败:', error);
+      sendError(res, '重试创建AI分析会话失败', 500);
+    }
+  } catch (error) {
+    console.error('重试创建AI分析会话失败:', error);
+    sendError(res, '重试创建AI分析会话失败', 500);
+  }
+};
+
+// 创建AI分析会话
+export const createAISession = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { publicUuid } = req.params;
+    const { student_id, student_name, started_at } = req.body;
+
+    // 参数验证
+    if (!student_id || !student_name) {
+      sendError(res, '学号和姓名不能为空', 400);
+      return;
+    }
+
+    // 获取考试信息
+    const exam = await prisma.exam.findUnique({
+      where: { publicUuid },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        startTime: true,
+        endTime: true,
+      },
+    });
+
+    if (!exam) {
+      sendError(res, '考试不存在', 404);
+      return;
+    }
+
+    if (exam.status !== ExamStatus.PUBLISHED) {
+      sendError(res, '考试尚未发布', 403);
+      return;
+    }
+
+    // 检查考试时间
+    const now = new Date();
+    if (exam.startTime && now < exam.startTime) {
+      sendError(res, '考试尚未开始', 403);
+      return;
+    }
+    if (exam.endTime && now > exam.endTime) {
+      sendError(res, '考试已结束', 403);
+      return;
+    }
+
+    // 检查是否已经提交过考试
+    const existingResult = await prisma.examResult.findUnique({
+      where: {
+        examId_participantId: {
+          examId: exam.id,
+          participantId: student_id,
+        },
+      },
+    });
+
+    if (existingResult) {
+      sendError(res, '您已经提交过本次考试，无法重新开始', 409);
+      return;
+    }
+
+    // 获取客户端IP地址
+    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+
+    try {
+      // 创建考试结果记录（临时记录，用于跟踪AI会话）
+      const examResult = await prisma.examResult.create({
+        data: {
+          examId: exam.id,
+          participantId: student_id,
+          participantName: student_name,
+          answers: {}, // 初始为空，提交时更新
+          score: 0, // 初始为0，提交时更新
+          ipAddress,
+          startedAt: started_at ? new Date(started_at) : now,
+          submittedAt: new Date('1970-01-01'), // 使用特殊时间戳标记未提交状态
+        },
+      });
+
+      // 创建AI分析会话
+      const aiResult = await aiAnalysisService.createSession(
+        examResult.id,
+        student_id,
+        exam.id
+      );
+
+      if (aiResult.success) {
+        console.log(`✅ 学生 ${student_name}(${student_id}) 开始考试 ${exam.title}，AI会话: ${aiResult.sessionId}`);
+        
+        sendSuccess(res, {
+          examResultId: examResult.id,
+          aiSessionId: aiResult.sessionId,
+          message: 'AI分析会话创建成功，考试开始',
+        }, 201);
+      } else {
+        // AI会话创建失败，但保留考试记录，只是标记AI为null
+        console.warn(`⚠️ 学生 ${student_name}(${student_id}) 开始考试 ${exam.title}，但AI会话创建失败: ${aiResult.error}`);
+        
+        // AI会话创建失败不影响正常考试，只是没有AI分析功能
+        sendSuccess(res, {
+          examResultId: examResult.id, // 保留考试记录ID
+          aiSessionId: null,
+          message: 'AI分析服务暂时不可用，但可以正常参加考试',
+          warning: aiResult.error,
+        });
+      }
+    } catch (error: any) {
+      // 处理重复提交错误
+      if (error.code === 'P2002') {
+        sendError(res, '您已开始过本次考试，请勿重复开始', 409);
+        return;
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('创建AI分析会话失败:', error);
+    sendError(res, '创建AI分析会话失败', 500);
+  }
+};
+
 // 提交考试答案
 export const submitExamAnswers = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -210,8 +442,7 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
       student_name, 
       answers, 
       started_at,
-      // AI功能相关数据
-      emotion_analysis_id,
+      // AI功能相关数据（已简化）
       timeline_data,
       voice_interactions,
       device_test_results
@@ -274,23 +505,59 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
     const score = calculateScore(answers, questions);
 
     try {
-      // 创建考试结果
-      const result = await prisma.examResult.create({
-        data: {
-          examId: exam.id,
-          participantId: student_id,
-          participantName: student_name,
-          answers: answers,
-          score,
-          ipAddress,
-          startedAt: started_at ? new Date(started_at) : now, // 使用前端传递的精确开始时间
-          // AI功能相关数据
-          emotionAnalysisId: emotion_analysis_id || null,
-          timelineData: timeline_data || null,
-          voiceInteractions: voice_interactions || null,
-          deviceTestResults: device_test_results || null,
+      // 检查是否已存在考试结果记录（从createAISession创建的临时记录）
+      let result = await prisma.examResult.findUnique({
+        where: {
+          examId_participantId: {
+            examId: exam.id,
+            participantId: student_id,
+          },
         },
       });
+
+      if (result && result.submittedAt.getTime() === new Date('1970-01-01').getTime()) {
+        // 更新已存在的临时记录
+        result = await prisma.examResult.update({
+          where: { id: result.id },
+          data: {
+            answers: answers,
+            score,
+            submittedAt: now,
+            // 更新AI功能相关数据（已简化）
+            timelineData: timeline_data || result.timelineData,
+            voiceInteractions: voice_interactions || result.voiceInteractions,
+            deviceTestResults: device_test_results || result.deviceTestResults,
+          },
+        });
+
+        // 如果有AI会话，结束AI检测
+        if (result.aiSessionId) {
+          const endResult = await aiAnalysisService.endSession(result.id);
+          if (endResult.success) {
+            console.log(`🔚 AI会话 ${result.aiSessionId} 已结束`);
+          } else {
+            console.warn(`⚠️ AI会话 ${result.aiSessionId} 结束失败: ${endResult.error}`);
+          }
+        }
+      } else {
+        // 创建新的考试结果记录（兼容旧的提交方式）
+        result = await prisma.examResult.create({
+          data: {
+            examId: exam.id,
+            participantId: student_id,
+            participantName: student_name,
+            answers: answers,
+            score,
+            ipAddress,
+            startedAt: started_at ? new Date(started_at) : now,
+            submittedAt: now,
+            // AI功能相关数据（已简化）
+            timelineData: timeline_data || null,
+            voiceInteractions: voice_interactions || null,
+            deviceTestResults: device_test_results || null,
+          },
+        });
+      }
 
       sendSuccess(res, {
         result_id: result.id,

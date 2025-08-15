@@ -81,7 +81,12 @@ npm run db:studio    # Open Prisma Studio
 - **缓存**: Redis (端口6379)  
 - **前端**: http://localhost:3000
 - **后端**: http://localhost:3001
+- **AI分析服务**: http://192.168.9.84:5000 (开发环境外部设备)
 - **百度TTS**: 需配置 `BAIDU_TTS_TOKEN` 环境变量
+
+#### 重要环境说明
+- **开发环境特殊配置**: WSL中存在HTTP代理，需在后端启动时清除代理设置避免AI服务502错误
+- **生产环境**: 所有服务(包括AI分析服务)都部署在同一设备上，无跨设备网络问题
 
 ### Docker 部署（完整版）
 ```bash

@@ -4,15 +4,23 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
-import WebSocket from 'ws';
+// import WebSocket from 'ws'; // 已移除，改用外部AI服务
 import { connectDatabase, disconnectDatabase } from './utils/database';
 import { errorHandler } from './middleware/errorHandler';
-import { handleEmotionWebSocket, cleanupEmotionSessions } from './controllers/aiController';
-import { emotionStreamService } from './services/emotionStreamService';
+// AI相关导入已删除，改用外部AI服务
 // import { audioProgressService } from './services/audioProgressService'; // 已禁用WebSocket
 
 // 加载环境变量
 dotenv.config();
+
+// 清除代理设置，确保AI服务连接正常
+// 解决WSL开发环境中代理导致的AI服务502错误问题
+// 注意：生产环境中所有服务(包括AI服务)都在同一设备，不存在此问题
+delete process.env.http_proxy;
+delete process.env.https_proxy;
+delete process.env.HTTP_PROXY;
+delete process.env.HTTPS_PROXY;
+console.log('🌐 已清除HTTP代理设置，确保AI服务连接正常 (仅开发环境需要)');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -116,20 +124,7 @@ const startServer = async (): Promise<void> => {
     // 创建HTTP服务器
     const server = createServer(app);
 
-    // 创建情绪分析WebSocket服务器
-    const wss = new WebSocket.Server({ 
-      server,
-      path: '/api/emotion/stream'
-    });
-
-    // 处理情绪分析WebSocket连接
-    wss.on('connection', (ws, req) => {
-      console.log('🔗 情绪分析WebSocket连接建立');
-      handleEmotionWebSocket(ws, req);
-    });
-    
-    // 设置服务器引用以支持按需WebSocket初始化
-    emotionStreamService.setServer(server);
+    // WebSocket服务器已移除，改用外部AI服务
     
     // 注释掉WebSocket服务，改用轮询机制
     // audioProgressService.initialize(server);
@@ -139,13 +134,12 @@ const startServer = async (): Promise<void> => {
       console.log(`🚀 服务器已启动在端口 ${PORT}`);
       console.log(`📱 健康检查: http://localhost:${PORT}/health`);
       console.log(`🌐 API地址: http://localhost:${PORT}/api`);
-      console.log(`📡 情绪分析WebSocket: ws://localhost:${PORT}/api/emotion/stream`);
+      console.log(`🤖 AI分析服务: ${process.env.AI_SERVICE_URL || 'http://192.168.9.84:5000'}`);
       // console.log(`🎵 音频进度WebSocket: ws://localhost:${PORT}/api/audio/progress`);
     });
 
     // 保存服务器实例以便优雅关闭
     (global as any).httpServer = server;
-    (global as any).wsServer = wss;
   } catch (error) {
     console.error('❌ 服务器启动失败:', error);
     process.exit(1);
@@ -155,22 +149,6 @@ const startServer = async (): Promise<void> => {
 // 优雅关闭
 const gracefulShutdown = async (signal: string) => {
   console.log(`收到${signal}信号，正在优雅关闭...`);
-  
-  // 清理情绪分析会话
-  cleanupEmotionSessions();
-  
-  // 关闭WebSocket服务器
-  const wsServer = (global as any).wsServer;
-  if (wsServer) {
-    wsServer.close(() => {
-      console.log('WebSocket服务器已关闭');
-    });
-  }
-  
-  // 清理音频进度WebSocket服务（已禁用）
-  // if (audioProgressService.isInitialized()) {
-  //   audioProgressService.cleanup();
-  // }
   
   // 关闭HTTP服务器
   const httpServer = (global as any).httpServer;

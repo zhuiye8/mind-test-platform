@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { io, Socket } from 'socket.io-client';
 import {
   Card,
   Form,
@@ -39,6 +40,8 @@ import {
   FireOutlined,
   StarOutlined,
   ThunderboltOutlined,
+  ExclamationCircleOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import type { Question } from '../types';
 import { publicApi } from '../services/api';
@@ -46,9 +49,9 @@ import { validateRequiredQuestions } from '../utils/validation';
 import DeviceTest from '../components/DeviceTest';
 import AudioFilePlayer, { type AudioFilePlayerRef } from '../components/AudioFilePlayer';
 import { audioApi } from '../services/audioApi';
-import EmotionAnalyzer from '../components/EmotionAnalyzer';
+// import EmotionAnalyzer from '../components/EmotionAnalyzer'; // 已移除，改用外部AI服务
 import { useTimelineRecorder } from '../utils/timelineRecorder';
-import { useAIApi } from '../services/aiApi';
+// import { useAIApi } from '../services/aiApi'; // 已移除旧的AI功能
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -93,14 +96,31 @@ const StudentExam: React.FC = () => {
   
   // AI功能状态
   const [deviceTestResults, setDeviceTestResults] = useState<any>(null);
-  const [emotionAnalysisId, setEmotionAnalysisId] = useState<string>('');
+  const [aiSessionId, setAiSessionId] = useState<string | null>(null);
+  const [examResultId, setExamResultId] = useState<string | null>(null);
+  const [aiSessionCreated, setAiSessionCreated] = useState<boolean>(false);
+  // const [websocketConnected, setWebsocketConnected] = useState<boolean>(false);
+  
+  // AI失败处理状态
+  const [aiFailureModalVisible, setAiFailureModalVisible] = useState<boolean>(false);
+  const [aiRetryCount, setAiRetryCount] = useState<number>(0);
+  const [aiFailureError, setAiFailureError] = useState<string>('');
+  const [aiRetryInProgress, setAiRetryInProgress] = useState<boolean>(false);
+  const maxRetries = 3;
+  
+  // WebSocket重试状态
+  const [wsRetryCount, setWsRetryCount] = useState<number>(0);
+  const [wsConnecting, setWsConnecting] = useState<boolean>(false);
+  const maxWSRetries = 5;
   
   // AI API hooks
   const timelineRecorder = useTimelineRecorder();
-  const aiApi = useAIApi();
+  // const aiApi = useAIApi(); // 已移除旧的AI功能
   
-  // 音频播放器引用
+  // 引用
   const audioPlayerRef = useRef<AudioFilePlayerRef>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     if (examUuid) {
@@ -244,14 +264,34 @@ const StudentExam: React.FC = () => {
           timelineRecorder.startSession(examUuid, values.student_id);
         }
         
-        // 检查是否有试卷描述，决定下一步
-        if (exam?.description && exam.description.trim()) {
-          setCurrentStep('description');
-        } else {
-          setCurrentStep('exam');
-          // 直接开始答题时记录开始时间
-          setExamStartTime(new Date());
+        // 创建AI分析会话（在学生信息提交后立即创建）
+        try {
+          await createAISession(values);
+          
+          // 检查是否有试卷描述，决定下一步
+          if (exam?.description && exam.description.trim()) {
+            setCurrentStep('description');
+          } else {
+            setCurrentStep('exam');
+            // 直接开始答题时记录开始时间
+            setExamStartTime(new Date());
+          }
+        } catch (error: any) {
+          if (error.message === 'CANCELLED') {
+            // 用户取消了AI会话创建，回到学生信息页面
+            message.info('已取消考试开始，请重新填写信息', 2);
+            return; // 不继续到下一步
+          }
+          // 其他错误重新抛出
+          throw error;
         }
+        
+        // 记录考试开始事件（包含AI会话信息）
+        timelineRecorder.recordEvent('exam_start', {
+          actualStartTime: new Date().toISOString(),
+          aiSessionEnabled: aiSessionCreated,
+          aiSessionId: aiSessionId,
+        });
       } else {
         // API返回success:false，不应该到这里，但以防万一
         message.error('您已经提交过本次考试，请勿重复提交');
@@ -328,29 +368,27 @@ const StudentExam: React.FC = () => {
   };
 
 
-  // 时间线事件处理
-  const handleTimelineEvent = (event: string, timestamp: number, metadata?: any) => {
-    timelineRecorder.recordEvent('custom', {
-      eventName: event,
-      timestamp,
-      ...metadata,
-    }, currentQuestion?.id, currentQuestionIndex);
-  };
+  // 旧的情绪分析事件处理函数（已移除，改用外部AI服务）
+  // const handleTimelineEvent = (event: string, timestamp: number, metadata?: any) => {
+  //   timelineRecorder.recordEvent('custom', {
+  //     eventName: event,
+  //     timestamp,
+  //     ...metadata,
+  //   }, currentQuestion?.id, currentQuestionIndex);
+  // };
 
-  // 情绪分析数据处理
-  const handleEmotionData = (data: any) => {
-    timelineRecorder.recordEmotionEvent('emotion_analysis_data', {
-      emotionData: data,
-    });
-  };
+  // const handleEmotionData = (data: any) => {
+  //   timelineRecorder.recordEmotionEvent('emotion_analysis_data', {
+  //     emotionData: data,
+  //   });
+  // };
 
-  // 情绪分析完成处理
-  const handleEmotionAnalysisComplete = (analysisId: string) => {
-    setEmotionAnalysisId(analysisId);
-    timelineRecorder.recordEmotionEvent('emotion_analysis_end', {
-      analysisId,
-    });
-  };
+  // const handleEmotionAnalysisComplete = (analysisId: string) => {
+  //   setEmotionAnalysisId(analysisId);
+  //   timelineRecorder.recordEmotionEvent('emotion_analysis_end', {
+  //     analysisId,
+  //   });
+  // };
 
   // 提交考试
   const handleSubmitExam = async (isTimeout: boolean = false) => {
@@ -390,6 +428,52 @@ const StudentExam: React.FC = () => {
         return;
       }
 
+      // 显示提交确认弹窗
+      const questionsForSubmit = getVisibleQuestions();
+      const answeredCount = Object.keys(answers).length;
+      const totalCount = questionsForSubmit.length;
+      const startTime = examStartTime || new Date();
+      const currentTime = new Date();
+      const duration = Math.floor((currentTime.getTime() - startTime.getTime()) / 1000);
+      const durationText = duration < 60 ? `${duration}秒` : 
+                          duration < 3600 ? `${Math.floor(duration / 60)}分${duration % 60}秒` :
+                          `${Math.floor(duration / 3600)}小时${Math.floor((duration % 3600) / 60)}分`;
+
+      const confirmed = await new Promise<boolean>((resolve) => {
+        modal.confirm({
+          title: '确认提交答卷',
+          width: 480,
+          content: (
+            <div style={{ lineHeight: 1.6, marginTop: 16 }}>
+              <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
+                <div style={{ marginBottom: 8 }}>
+                  <strong>📊 答题统计</strong>
+                </div>
+                <div>• 总题目数：{totalCount} 题</div>
+                <div>• 已回答：{answeredCount} 题</div>
+                <div>• 答题用时：{durationText}</div>
+                {aiSessionId && (
+                  <div style={{ color: '#1890ff' }}>• AI智能分析：已启用 🤖</div>
+                )}
+              </div>
+              <div style={{ color: '#666' }}>
+                <strong style={{ color: '#ff4d4f' }}>⚠️ 提醒：</strong>
+                提交后将无法修改答案，请确认所有题目都已认真作答。
+              </div>
+            </div>
+          ),
+          okText: '确认提交',
+          cancelText: '继续答题',
+          okType: 'primary',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+
+      if (!confirmed) {
+        return; // 用户取消提交
+      }
+
       await submitToServer();
     } catch (error) {
       console.error('提交失败:', error);
@@ -399,16 +483,248 @@ const StudentExam: React.FC = () => {
     }
   };
 
+  // AI失败处理函数
+  const handleAISessionFailure = (error: string): Promise<'continue' | 'retry' | 'cancel' | 'retry_success'> => {
+    return new Promise((resolve) => {
+      setAiFailureError(error);
+      setAiFailureModalVisible(true);
+      
+      // 将resolve函数保存到组件状态中，用于按钮点击时调用
+      (window as any).aiFailureResolve = resolve;
+    });
+  };
+
+  // 处理重试响应的辅助函数
+  const handleRetryResponse = async (retryResponse: any, _studentData: any, _examUuid: string): Promise<boolean> => {
+    if (retryResponse.success && retryResponse.data) {
+      // 检查重试是否真正成功
+      const retrySuccessful = retryResponse.data.aiSessionId && !retryResponse.data.warning;
+      
+      if (retrySuccessful) {
+        console.log('[AI会话] AI会话重试成功:', retryResponse.data);
+        
+        setAiSessionId(retryResponse.data.aiSessionId);
+        setExamResultId(retryResponse.data.examResultId);
+        setAiSessionCreated(true);
+        
+        // 建立WebSocket连接
+        const wsConnected = await connectWebSocket(retryResponse.data.aiSessionId);
+        if (!wsConnected) {
+          console.warn('[WebSocket] WebSocket重试连接失败，但AI会话已创建');
+        }
+        
+        // 记录AI会话重试成功事件
+        timelineRecorder.recordEvent('custom', {
+          type: 'ai_session_retry_success',
+          sessionId: retryResponse.data.aiSessionId,
+          examResultId: retryResponse.data.examResultId,
+          retryCount: aiRetryCount,
+          message: retryResponse.data.message,
+        });
+        
+        return true;
+      } else {
+        // 重试仍然失败
+        console.warn('[AI会话] AI会话重试失败（接口成功但AI失败）:', retryResponse.data.warning || 'aiSessionId为空');
+        return false; // 返回false表示重试失败
+      }
+    } else {
+      // 重试请求失败
+      console.warn('[AI会话] AI会话重试请求失败:', retryResponse.error);
+      return false; // 返回false表示重试失败
+    }
+  };
+
+  const handleAIFailureOption = async (option: 'continue' | 'retry' | 'cancel') => {
+    if (option === 'retry') {
+      // 重试时不关闭模态框，而是在模态框中显示重试进度
+      if (aiRetryCount >= maxRetries) {
+        message.error(`已达到最大重试次数(${maxRetries})，请选择其他选项`);
+        return;
+      }
+      
+      setAiRetryCount(prev => prev + 1);
+      setAiRetryInProgress(true);
+      
+      try {
+        const studentData = studentInfo;
+        const examUuid = window.location.pathname.split('/').pop();
+        
+        if (!studentData || !examUuid) {
+          throw new Error('缺少必要信息');
+        }
+        
+        // 使用重试API
+        const retryResponse = await publicApi.retryAISession(examUuid, {
+          student_id: studentData.student_id,
+          student_name: studentData.student_name,
+        });
+        
+        const retryResult = await handleRetryResponse(retryResponse, studentData, examUuid);
+        
+        if (retryResult) {
+          // 重试成功，关闭模态框
+          setAiFailureModalVisible(false);
+          if ((window as any).aiFailureResolve) {
+            (window as any).aiFailureResolve('retry_success');
+            delete (window as any).aiFailureResolve;
+          }
+        } else {
+          // 重试失败，更新错误信息但保持模态框开启
+          const errorMsg = getErrorMessage(retryResponse.data?.warning || retryResponse.error || '重试失败');
+          setAiFailureError(errorMsg);
+        }
+      } catch (error: any) {
+        console.error('[AI会话] 重试失败:', error);
+        const errorMsg = getErrorMessage(error.message || '重试过程中发生错误');
+        setAiFailureError(errorMsg);
+      } finally {
+        setAiRetryInProgress(false);
+      }
+    } else {
+      // continue 或 cancel 时关闭模态框
+      setAiFailureModalVisible(false);
+      if ((window as any).aiFailureResolve) {
+        (window as any).aiFailureResolve(option);
+        delete (window as any).aiFailureResolve;
+      }
+    }
+  };
+
+  const getErrorMessage = (error: string): string => {
+    if (error.includes('ECONNREFUSED') || error.includes('502')) {
+      return '无法连接到情绪分析服务器，请检查网络连接';
+    } else if (error.includes('timeout')) {
+      return '连接超时，服务器响应过慢';
+    } else if (error.includes('503') || error.includes('Service Unavailable')) {
+      return '情绪分析服务暂时不可用';
+    }
+    return error || '情绪分析服务连接失败';
+  };
+
+  // 创建AI分析会话
+  const createAISession = async (studentData: StudentInfo, _isRetry: boolean = false): Promise<boolean> => {
+    if (!studentData || !examUuid || aiSessionCreated) {
+      return false;
+    }
+
+    try {
+      console.log('[AI会话] 开始创建AI分析会话...');
+      const startTime = new Date();
+      
+      const response = await publicApi.createAISession(examUuid, {
+        student_id: studentData.student_id,
+        student_name: studentData.student_name,
+        started_at: startTime.toISOString(),
+      });
+
+      if (response.success && response.data) {
+        // 检查AI会话是否真正创建成功
+        const aiSessionCreated = response.data.aiSessionId && !response.data.warning;
+        
+        if (aiSessionCreated) {
+          console.log('[AI会话] AI会话创建成功:', response.data);
+          
+          setAiSessionId(response.data.aiSessionId);
+          setExamResultId(response.data.examResultId);
+          setAiSessionCreated(true);
+          
+          // 建立WebSocket连接
+          if (response.data.aiSessionId) {
+            const wsConnected = await connectWebSocket(response.data.aiSessionId);
+            if (!wsConnected) {
+              console.warn('[WebSocket] WebSocket连接失败，但AI会话已创建，将继续进行考试');
+            }
+          }
+          
+          // 记录AI会话创建事件
+          timelineRecorder.recordEvent('custom', {
+            type: 'ai_session_created',
+            sessionId: response.data.aiSessionId,
+            examResultId: response.data.examResultId,
+            message: response.data.message,
+          });
+          
+          return true;
+        } else {
+          // AI会话创建失败，但接口返回成功 - 这是关键修复
+          console.warn('[AI会话] AI会话创建失败（接口成功但AI失败）:', response.data.warning || 'aiSessionId为空');
+          
+          // 保存examResultId，即使AI失败也要保留考试记录
+          if (response.data.examResultId) {
+            setExamResultId(response.data.examResultId);
+          }
+          
+          // 显示失败处理对话框，让用户选择
+          const errorMsg = getErrorMessage(response.data.warning || 'AI服务连接失败');
+          const userChoice = await handleAISessionFailure(errorMsg);
+          
+          if (userChoice === 'continue') {
+            message.info('已跳过AI分析功能，正常进行考试', 2);
+            return false;
+          } else if (userChoice === 'retry_success') {
+            // 重试成功，AI会话已在模态框中创建
+            return true;
+          } else {
+            // 取消考试或其他情况
+            throw new Error('CANCELLED');
+          }
+        }
+      } else {
+        console.warn('[AI会话] AI会话创建失败:', response.error || response.data?.warning);
+        
+        // 显示失败处理对话框，让用户选择
+        const errorMsg = getErrorMessage(response.error || response.data?.warning || '');
+        const userChoice = await handleAISessionFailure(errorMsg);
+        
+        if (userChoice === 'continue') {
+          message.info('已跳过AI分析功能，正常进行考试', 2);
+          return false;
+        } else if (userChoice === 'retry_success') {
+          // 重试成功，AI会话已在模态框中创建
+          return true;
+        } else { // cancel
+          throw new Error('CANCELLED'); // 抛出取消错误
+        }
+      }
+    } catch (error: any) {
+      // 如果是用户取消，直接重新抛出错误
+      if (error.message === 'CANCELLED') {
+        throw error;
+      }
+      
+      console.error('[AI会话] 创建AI会话时发生错误:', error);
+      
+      // 显示失败处理对话框
+      const errorMsg = getErrorMessage(error.message || error.toString());
+      const userChoice = await handleAISessionFailure(errorMsg);
+      
+      if (userChoice === 'continue') {
+        message.info('已跳过AI分析功能，正常进行考试', 2);
+        return false;
+      } else if (userChoice === 'retry_success') {
+        // 重试成功，AI会话已在模态框中创建
+        return true;
+      } else { // cancel
+        throw new Error('CANCELLED'); // 抛出取消错误
+      }
+    }
+  };
+
   // 从描述页开始答题
   const handleStartExam = () => {
     setCurrentStep('exam');
     // 记录答题实际开始时间（精确到秒）
     setExamStartTime(new Date());
     
-    // 记录考试开始事件
-    timelineRecorder.recordEvent('exam_start', {
+    // 记录进入答题界面事件
+    timelineRecorder.recordEvent('custom', {
+      type: 'exam_questions_start',
       actualStartTime: new Date().toISOString(),
+      fromDescription: true,
     });
+    
+    console.log(`[答题开始] 学生 ${studentInfo?.student_name} 从描述页进入答题界面`);
   };
 
   // 实际提交到服务器
@@ -434,9 +750,12 @@ const StudentExam: React.FC = () => {
         answers: answers,
         // 传递实际答题开始时间（精确到秒）
         started_at: examStartTime?.toISOString(),
-        // AI功能数据
-        emotion_analysis_id: emotionAnalysisId,
-        timeline_data: timelineSession,
+        // AI功能数据（已简化，emotion_analysis_id由外部AI服务管理）
+        timeline_data: {
+          ...timelineSession,
+          aiSessionId: aiSessionId, // 包含AI会话ID
+          examResultId: examResultId, // 包含考试结果ID
+        },
         voice_interactions: {
           enabled: false,
           // 已切换为音频文件播放模式
@@ -445,13 +764,13 @@ const StudentExam: React.FC = () => {
       });
 
       if (response.success) {
+        // 断开WebSocket连接（触发后端endSession）
+        disconnectWebSocket();
+        
         // 清除本地保存的答案
         localStorage.removeItem(`exam_${examUuid}_answers`);
         
-        // 如果有AI报告生成功能，可以在这里触发
-        if (response.data?.result_id && emotionAnalysisId) {
-          generateAIReport(response.data.result_id);
-        }
+        // AI报告生成已移至教师端，学生端不再触发报告生成
         
         message.success('提交成功！感谢您的参与');
         setCurrentStep('completed');
@@ -471,25 +790,243 @@ const StudentExam: React.FC = () => {
     }
   };
 
-  // 生成AI报告
-  const generateAIReport = async (examResultId: string) => {
+  // WebSocket重试连接函数
+  const connectWebSocketWithRetry = async (sessionId: string, retryCount: number = 0): Promise<boolean> => {
+    if (retryCount >= maxWSRetries) {
+      console.warn(`[WebSocket] 已达到最大重试次数 (${maxWSRetries})，放弃连接`);
+      message.warning('WebSocket连接失败，视音频分析功能不可用，但不影响正常答题', 3);
+      return false;
+    }
+
+    setWsConnecting(true);
+    console.log(`[WebSocket] 尝试连接AI服务... (${retryCount + 1}/${maxWSRetries})`);
+
     try {
-      const reportResponse = await aiApi.generateReport({
-        examResultId,
-        studentAnswers: answers,
-        emotionAnalysisId,
-        timelineData: timelineRecorder.getCurrentSession(),
-        reportType: 'comprehensive',
-        language: 'zh-CN',
+      const socket = io('http://192.168.9.84:5000', {
+        transports: ['websocket'],
+        timeout: 8000, // 8秒超时
+        reconnection: false, // 禁用自动重连，我们手动控制
       });
 
-      if (reportResponse.success) {
-        console.log('AI报告生成已启动:', reportResponse.data?.reportId);
-      }
+      return new Promise((resolve) => {
+        let resolved = false;
+
+        const resolveOnce = (result: boolean) => {
+          if (!resolved) {
+            resolved = true;
+            setWsConnecting(false);
+            setWsRetryCount(retryCount);
+            resolve(result);
+          }
+        };
+
+        socket.on('connect', () => {
+          console.log(`[WebSocket] 连接成功！会话ID: ${sessionId}`);
+          socketRef.current = socket;
+          
+          // 连接成功后开始数据采集
+          startMediaCapture(socket, sessionId);
+          
+          // 记录连接成功事件
+          timelineRecorder.recordEvent('custom', {
+            type: 'websocket_connected',
+            sessionId: sessionId,
+            retryCount: retryCount,
+            timestamp: new Date().toISOString(),
+          });
+          
+          resolveOnce(true);
+        });
+
+        socket.on('disconnect', (reason: string) => {
+          console.log(`[WebSocket] 连接断开: ${reason}`);
+          if (!resolved) {
+            // 连接断开，尝试重连
+            setTimeout(() => {
+              connectWebSocketWithRetry(sessionId, retryCount + 1);
+            }, Math.min(1000 * Math.pow(2, retryCount), 10000)); // 指数退避，最大10秒
+          }
+        });
+
+        socket.on('connect_error', (error: any) => {
+          console.error(`[WebSocket] 连接错误 (尝试 ${retryCount + 1}):`, error);
+          socket.disconnect();
+          
+          if (retryCount < maxWSRetries - 1) {
+            // 还有重试机会，使用指数退避策略
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
+            console.log(`[WebSocket] ${delay}ms 后进行第 ${retryCount + 2} 次重试...`);
+            
+            setTimeout(() => {
+              connectWebSocketWithRetry(sessionId, retryCount + 1).then(resolveOnce);
+            }, delay);
+          } else {
+            // 所有重试都失败了
+            resolveOnce(false);
+          }
+        });
+
+        // 设置总体超时
+        setTimeout(() => {
+          if (!resolved) {
+            console.warn('[WebSocket] 连接超时');
+            socket.disconnect();
+            
+            if (retryCount < maxWSRetries - 1) {
+              connectWebSocketWithRetry(sessionId, retryCount + 1).then(resolveOnce);
+            } else {
+              resolveOnce(false);
+            }
+          }
+        }, 12000); // 12秒总超时
+      });
     } catch (error) {
-      console.error('启动AI报告生成失败:', error);
+      console.error(`[WebSocket] 连接异常:`, error);
+      setWsConnecting(false);
+      
+      if (retryCount < maxWSRetries - 1) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
+        console.log(`[WebSocket] ${delay}ms 后重试...`);
+        setTimeout(() => {
+          connectWebSocketWithRetry(sessionId, retryCount + 1);
+        }, delay);
+        return false;
+      }
+      
+      return false;
     }
   };
+
+  // 保持原有的简单连接函数作为入口点
+  const connectWebSocket = async (sessionId: string): Promise<boolean> => {
+    setWsRetryCount(0); // 重置重试计数
+    return await connectWebSocketWithRetry(sessionId, 0);
+  };
+
+  const startMediaCapture = async (socket: Socket, sessionId: string) => {
+    try {
+      // 获取摄像头和麦克风权限
+      if (deviceTestResults?.cameraPermission || deviceTestResults?.microphonePermission) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: deviceTestResults?.cameraPermission,
+          audio: deviceTestResults?.microphonePermission,
+        });
+
+        mediaStreamRef.current = stream;
+
+        // 发送视频帧（如果有摄像头权限）
+        if (deviceTestResults?.cameraPermission && stream.getVideoTracks().length > 0) {
+          startVideoCapture(socket, sessionId, stream);
+        }
+
+        // 发送音频数据（如果有麦克风权限）
+        if (deviceTestResults?.microphonePermission && stream.getAudioTracks().length > 0) {
+          startAudioCapture(socket, sessionId, stream);
+        }
+      }
+    } catch (error) {
+      console.warn('[媒体采集] 无法获取媒体流:', error);
+      // 即使媒体采集失败，也不影响考试进行
+    }
+  };
+
+  const startVideoCapture = (socket: Socket, sessionId: string, stream: MediaStream) => {
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.play();
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const captureFrame = () => {
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx?.drawImage(video, 0, 0);
+        
+        const frameData = canvas.toDataURL('image/jpeg', 0.7);
+        
+        socket.emit('video_frame', {
+          session_id: sessionId,
+          frame_data: frameData
+        });
+      }
+    };
+
+    // 每200ms发送一帧（5fps）
+    const frameInterval = setInterval(captureFrame, 200);
+    
+    // 保存interval引用以便清理
+    (video as any).frameInterval = frameInterval;
+    (video as any).sessionVideo = true;
+  };
+
+  const startAudioCapture = (socket: Socket, sessionId: string, stream: MediaStream) => {
+    try {
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+      processor.onaudioprocess = (event) => {
+        const audioData = event.inputBuffer.getChannelData(0);
+        const audioArray = Array.from(audioData);
+        
+        // 转换为base64编码的WAV数据（简化版）
+        // 将float32音频数据转换为int16数据
+        const int16Array = audioArray.map(sample => Math.max(-32768, Math.min(32767, sample * 32767)));
+        const audioBase64 = btoa(String.fromCharCode(...int16Array));
+        
+        socket.emit('audio_data', {
+          session_id: sessionId,
+          audio_data: `data:audio/wav;base64,${audioBase64}`
+        });
+      };
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+
+      // 保存引用以便清理
+      (stream as any).audioContext = audioContext;
+      (stream as any).audioProcessor = processor;
+    } catch (error) {
+      console.warn('[音频采集] 音频处理失败:', error);
+    }
+  };
+
+  const disconnectWebSocket = () => {
+    console.log('[WebSocket] 断开连接和清理资源...');
+    
+    // 断开Socket连接
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
+    // 停止媒体流
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+
+    // 清理视频采集
+    const videos = document.querySelectorAll('video[sessionVideo]');
+    videos.forEach(video => {
+      if ((video as any).frameInterval) {
+        clearInterval((video as any).frameInterval);
+      }
+    });
+
+    // setWebsocketConnected(false);
+  };
+
+  // 组件卸载时清理WebSocket连接
+  useEffect(() => {
+    return () => {
+      disconnectWebSocket();
+    };
+  }, []);
+
+  // AI报告生成已移至教师端，学生端只负责数据收集
 
   // 智能题目切换 - 自动停止音频播放
   const handleQuestionChange = useCallback((newIndex: number) => {
@@ -1693,16 +2230,20 @@ const StudentExam: React.FC = () => {
                 />
               )}
               
-              {/* 情绪分析组件 */}
-              {deviceTestResults?.cameraPermission && (
-                <EmotionAnalyzer
-                  examId={examUuid || ''}
-                  studentId={studentInfo?.student_id || ''}
-                  onEmotionData={handleEmotionData}
-                  onAnalysisComplete={handleEmotionAnalysisComplete}
-                  onTimelineEvent={handleTimelineEvent}
-                  disabled={!deviceTestResults?.cameraPermission}
-                />
+              {/* 情绪分析已移至外部AI服务，通过WebSocket进行实时分析 */}
+              {deviceTestResults?.cameraPermission && aiSessionId && (
+                <div style={{ 
+                  padding: '16px', 
+                  background: '#f0f9ff', 
+                  border: '1px dashed #1890ff',
+                  borderRadius: '8px',
+                  textAlign: 'center',
+                  color: '#1890ff'
+                }}>
+                  <span>🤖 AI智能分析已启用</span>
+                  <br />
+                  <small>系统正在后台进行心理状态分析</small>
+                </div>
               )}
             </Space>
           </div>
@@ -1974,6 +2515,76 @@ const StudentExam: React.FC = () => {
             )}
           </>
         )}
+
+      {/* AI会话失败处理对话框 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ExclamationCircleOutlined style={{ color: '#faad14', fontSize: '20px' }} />
+            <span>情绪分析连接失败</span>
+          </div>
+        }
+        open={aiFailureModalVisible}
+        footer={null}
+        closable={false}
+        centered
+        width={480}
+      >
+        <div style={{ padding: '16px 0' }}>
+          <div style={{ marginBottom: '16px', fontSize: '14px', lineHeight: '1.6', color: '#666' }}>
+            {aiFailureError}
+          </div>
+          
+          <div style={{ 
+            background: '#f6f9fc', 
+            padding: '12px', 
+            borderRadius: '8px', 
+            marginBottom: '24px',
+            border: '1px solid #e8f2ff'
+          }}>
+            <div style={{ fontSize: '13px', color: '#4a5568' }}>
+              <div style={{ marginBottom: '4px' }}>
+                <InfoCircleOutlined style={{ color: '#3182ce', marginRight: '6px' }} />
+                情绪分析功能可以记录您的答题过程，帮助生成心理分析报告
+              </div>
+              <div style={{ marginBottom: '4px' }}>
+                • <strong>继续考试</strong>：跳过情绪分析，正常进行测试
+              </div>
+              <div style={{ marginBottom: '4px' }}>
+                • <strong>重试连接</strong>：尝试重新连接分析服务（AI: {aiRetryCount}/{maxRetries}, WS: {wsRetryCount}/{maxWSRetries}）
+              </div>
+              <div>
+                • <strong>取消考试</strong>：返回信息填写页面
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <Button 
+              onClick={() => handleAIFailureOption('cancel')}
+              style={{ minWidth: '80px' }}
+            >
+              取消考试
+            </Button>
+            <Button 
+              onClick={() => handleAIFailureOption('continue')}
+              type="default"
+              style={{ minWidth: '80px' }}
+            >
+              继续考试
+            </Button>
+            <Button 
+              onClick={() => handleAIFailureOption('retry')}
+              type="primary"
+              loading={aiRetryInProgress || wsConnecting}
+              disabled={aiRetryCount >= maxRetries}
+              style={{ minWidth: '80px' }}
+            >
+              {(aiRetryInProgress || wsConnecting) ? '连接中...' : '重试连接'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
