@@ -1,145 +1,160 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Card, Typography, Space, Divider, Alert, message } from 'antd';
-import { UserOutlined, LockOutlined, SafetyOutlined, ThunderboltOutlined, HeartOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Typography, Alert, Space, Divider, message } from 'antd';
+import { UserOutlined, LockOutlined, SafetyOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
 import { setAuthToken, setTeacherInfo } from '../utils/auth';
 import type { LoginForm } from '../types';
+import '../styles/login.css';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 const Login: React.FC = () => {
+  // 加载与错误状态
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const navigate = useNavigate();
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<LoginForm>();
 
+  // 提交登录：不改变原有逻辑
   const handleLogin = async (values: LoginForm) => {
     setLoading(true);
-    setError(null); // 重置错误信息
-
+    setError(null);
     try {
-      const response = await authApi.login(values);
-
-      if (response.success && response.data) {
-        setAuthToken(response.data.token);
-        setTeacherInfo(response.data.teacher);
+      const resp = await authApi.login(values);
+      if (resp.success && resp.data) {
+        setAuthToken(resp.data.token);
+        setTeacherInfo(resp.data.teacher);
         message.success('登录成功！');
         navigate('/dashboard');
       } else {
-        // 后端验证失败，但请求成功
-        setError(response.error || '登录失败，请检查您的凭据。');
+        setError(resp.error || '登录失败，请检查您的工号和密码。');
       }
-    } catch (err: any) {
-      console.error('登录请求失败:', err);
-      // 网络错误或其他异常
-      const errorMessage = err.response?.data?.error || '网络错误，请稍后重试。';
-      setError(errorMessage);
+    } catch (e: any) {
+      setError(e?.response?.data?.error || '网络异常，请稍后重试。');
     } finally {
       setLoading(false);
     }
   };
 
+  // 密码 CapsLock 提示
+  const onPwKeyUp = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (typeof e.getModifierState === 'function') {
+      setCapsLockOn(e.getModifierState('CapsLock'));
+    }
+  };
+
+  const cardCls = `card-elevated${error ? ' card-elevated--error' : ''}`;
+
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center p-4"
-      style={{
-        background: 'linear-gradient(120deg, var(--color-primary-50), var(--color-secondary-50))',
-      }}
-    >
-      <div className="w-full max-w-md">
-        <Card bordered={false} className="shadow-xl rounded-2xl" bodyStyle={{ padding: '2.5rem' }}>
-            <div className="text-center mb-10">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary-100 mb-6">
-                <HeartOutlined className="text-primary-500 text-5xl" />
-              </div>
-              <Title level={2} className="text-gray-800">
-                心理测评云平台
-              </Title>
-              <Text type="secondary">
-                欢迎教师登录
-              </Text>
-            </div>
+    <div className="login-shell">
+      {/* 左侧品牌叙事面板（抽象几何） */}
+      <section className="brand-panel" aria-hidden>
+        <div className="brand-surface">
+          <div className="pattern-grid" />
+          <div className="psy-hero psy-hero--ring" />
+          <div className="psy-hero psy-hero--wave" />
+          <div className="psy-hero psy-hero--dots" />
+        </div>
+        <div className="brand-content">
+          <Title level={2} className="brand-title">心理测评云平台</Title>
+          <Text className="brand-subtitle">为教师提供高效、可靠的学生心理量表评估工具</Text>
+        </div>
+      </section>
 
-            <Form
-              form={form}
-              name="login"
-              onFinish={handleLogin}
-              autoComplete="off"
-              layout="vertical"
-              size="large"
+      {/* 右侧表单功能面板 */}
+      <section className="form-panel">
+        <Card className={cardCls}>
+          <Space direction="vertical" size={8} style={{ width: '100%', marginBottom: 8 }}>
+            <Title level={4} style={{ margin: 0 }}>教师登录</Title>
+            <Text type="secondary">请使用校内工号和密码登录</Text>
+          </Space>
+
+          {/* 全局错误（礼貌播报） */}
+          <div aria-live="polite">
+            {error && (
+              <Alert
+                style={{ marginBottom: 16 }}
+                message={error}
+                type="error"
+                showIcon
+                closable
+                onClose={() => setError(null)}
+              />
+            )}
+          </div>
+
+          <Form
+            form={form}
+            name="teacher-login"
+            layout="vertical"
+            size="large"
+            autoComplete="off"
+            onFinish={handleLogin}
+            onValuesChange={() => error && setError(null)}
+          >
+            {/* 教师工号 */}
+            <Form.Item
+              label="教师工号"
+              name="teacher_id"
+              rules={[
+                { required: true, message: '请输入您的教师工号' },
+                { min: 3, message: '工号至少为 3 位' },
+              ]}
             >
-              {error && (
-                <Form.Item>
-                  <Alert
-                    message={error}
-                    type="error"
-                    showIcon
-                    closable
-                    onClose={() => setError(null)}
-                  />
-                </Form.Item>
-              )}
+              <Input placeholder="请输入工号" prefix={<UserOutlined />} allowClear />
+            </Form.Item>
 
-              <Form.Item
-                label="教师工号"
-                name="teacher_id"
-                style={{ marginBottom: '24px' }}
-                rules={[
-                  { required: true, message: '请输入您的教师工号' },
-                  { min: 3, message: '工号至少为3位' },
-                ]}
+            {/* 密码 */}
+            <Form.Item
+              label="密码"
+              name="password"
+              rules={[
+                { required: true, message: '请输入您的密码' },
+                { min: 6, message: '密码至少为 6 位' },
+              ]}
+              extra={capsLockOn ? '检测到大写锁定已开启，可能导致密码输入错误。' : undefined}
+            >
+              <Input.Password
+                placeholder="请输入密码"
+                prefix={<LockOutlined />}
+                visibilityToggle
+                onKeyUp={onPwKeyUp}
+              />
+            </Form.Item>
+
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button
+                type="primary"
+                htmlType="submit"
+                block
+                size="large"
+                loading={loading}
+                className="login-primary-btn"
               >
-                <Input
-                  prefix={<UserOutlined className="site-form-item-icon text-gray-400" />}
-                  placeholder="教师工号"
-                />
-              </Form.Item>
+                {loading ? '正在登录...' : '登录'}
+              </Button>
+            </Form.Item>
+          </Form>
 
-              <Form.Item
-                label="密码"
-                name="password"
-                style={{ marginBottom: '24px' }}
-                rules={[
-                  { required: true, message: '请输入您的密码' },
-                  { min: 6, message: '密码至少为6位' },
-                ]}
-              >
-                <Input.Password
-                  prefix={<LockOutlined className="site-form-item-icon text-gray-400" />}
-                  placeholder="密码"
-                />
-              </Form.Item>
+          <Divider style={{ margin: '20px 0 12px' }} />
 
-              <Form.Item>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={loading}
-                  block
-                  className="mt-6 rounded-lg"
-                  style={{ height: '52px', fontSize: '16px' }}
-                >
-                  {loading ? '正在登录...' : '立即登录'}
-                </Button>
-              </Form.Item>
-            </Form>
-
-            <Divider>
-              <Text type="secondary" className="text-xs">安全提示</Text>
-            </Divider>
-
-            <Text type="secondary" className="text-center block text-xs">
-              <SafetyOutlined className="mr-1" />
-              请妥善保管您的账户信息，切勿泄露给他人。
-            </Text>
-          </Card>
-          <div className="text-center mt-8">
-            <Text type="secondary" className="text-xs">
-              © 2024 心理测评云平台. All Rights Reserved.
+          {/* 帮助与安全提示 */}
+          <div className="login-footer">
+            <SafetyOutlined style={{ marginRight: 8 }} />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              请妥善保管账户信息，离开电脑前及时退出登录。
             </Text>
           </div>
+        </Card>
+
+        <div className="legal">
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            © 2024 心理测评云平台
+          </Text>
         </div>
+      </section>
     </div>
   );
 };

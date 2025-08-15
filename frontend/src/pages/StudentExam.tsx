@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -43,6 +43,12 @@ import {
 import type { Question } from '../types';
 import { publicApi } from '../services/api';
 import { validateRequiredQuestions } from '../utils/validation';
+import DeviceTest from '../components/DeviceTest';
+import AudioFilePlayer, { type AudioFilePlayerRef } from '../components/AudioFilePlayer';
+import { audioApi } from '../services/audioApi';
+import EmotionAnalyzer from '../components/EmotionAnalyzer';
+import { useTimelineRecorder } from '../utils/timelineRecorder';
+import { useAIApi } from '../services/aiApi';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -73,7 +79,7 @@ const StudentExam: React.FC = () => {
   // 考试状态管理
   const [exam, setExam] = useState<ExamInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentStep, setCurrentStep] = useState<'password' | 'info' | 'description' | 'exam' | 'completed'>('password');
+  const [currentStep, setCurrentStep] = useState<'password' | 'info' | 'device-test' | 'description' | 'exam' | 'completed'>('password');
   const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -84,6 +90,17 @@ const StudentExam: React.FC = () => {
   // 沉浸式UI状态
   const [showQuestionNav, setShowQuestionNav] = useState(false);
   const [questionTransition, setQuestionTransition] = useState(false);
+  
+  // AI功能状态
+  const [deviceTestResults, setDeviceTestResults] = useState<any>(null);
+  const [emotionAnalysisId, setEmotionAnalysisId] = useState<string>('');
+  
+  // AI API hooks
+  const timelineRecorder = useTimelineRecorder();
+  const aiApi = useAIApi();
+  
+  // 音频播放器引用
+  const audioPlayerRef = useRef<AudioFilePlayerRef>(null);
 
   useEffect(() => {
     if (examUuid) {
@@ -116,6 +133,23 @@ const StudentExam: React.FC = () => {
     }
   }, [examUuid, answers]);
 
+  // 记录题目显示事件
+  useEffect(() => {
+    const allQuestions = getVisibleQuestions();
+    const currentQuestion = allQuestions[currentQuestionIndex];
+    if (currentQuestion && currentStep === 'exam') {
+      timelineRecorder.recordQuestionEvent(
+        'question_show',
+        currentQuestion.id,
+        currentQuestionIndex,
+        {
+          questionTitle: currentQuestion.title,
+          questionType: currentQuestion.question_type,
+        }
+      );
+    }
+  }, [currentQuestionIndex, currentStep, exam?.questions]);
+
   // 加载考试信息
   const loadExamInfo = async () => {
     if (!examUuid) {
@@ -135,9 +169,9 @@ const StudentExam: React.FC = () => {
         setExam(examData);
         setTimeRemaining(examData.duration_minutes * 60);
         
-        // 如果不需要密码，直接进入学生信息录入
+        // 如果不需要密码，直接进入设备检测
         if (!examData.password_required) {
-          setCurrentStep('info');
+          setCurrentStep('device-test');
         }
 
         // 尝试恢复之前保存的答案
@@ -173,9 +207,9 @@ const StudentExam: React.FC = () => {
             setExam(examData);
             setTimeRemaining(examData.duration_minutes * 60);
             
-            // 确保获取到题目数据后再跳转
+            // 确保获取到题目数据后再跳转到设备检测
             if (examData.questions && examData.questions.length > 0) {
-              setCurrentStep('info');
+              setCurrentStep('device-test');
             } else {
               message.error('获取考试题目失败，请刷新页面重试');
             }
@@ -204,12 +238,18 @@ const StudentExam: React.FC = () => {
       if (response.success && response.data?.canSubmit) {
         // 没有重复提交，可以继续
         setStudentInfo(values);
-        // 检查是否有试卷描述，如果有则显示描述确认页
+        
+        // 启动时间线记录器
+        if (examUuid && values.student_id) {
+          timelineRecorder.startSession(examUuid, values.student_id);
+        }
+        
+        // 检查是否有试卷描述，决定下一步
         if (exam?.description && exam.description.trim()) {
           setCurrentStep('description');
         } else {
           setCurrentStep('exam');
-          // 直接开始答题时也记录开始时间
+          // 直接开始答题时记录开始时间
           setExamStartTime(new Date());
         }
       } else {
@@ -229,6 +269,39 @@ const StudentExam: React.FC = () => {
     }
   };
 
+  // 设备测试完成处理
+  const handleDeviceTestComplete = (results: any) => {
+    setDeviceTestResults(results);
+    
+    // 记录设备测试结果
+    timelineRecorder.recordEvent('custom', {
+      eventName: 'device_test_completed',
+      deviceResults: results,
+    });
+
+    // 设备测试完成后，跳转到信息录入页面
+    setCurrentStep('info');
+  };
+
+  // 跳过设备测试
+  const handleSkipDeviceTest = () => {
+    setDeviceTestResults({
+      cameraAvailable: false,
+      microphoneAvailable: false,
+      cameraPermission: false,
+      microphonePermission: false,
+      testPassed: false,
+    });
+    
+    // 记录跳过设备测试
+    timelineRecorder.recordEvent('custom', {
+      eventName: 'device_test_skipped',
+    });
+
+    // 跳过设备测试后，也跳转到信息录入页面
+    setCurrentStep('info');
+  };
+
 
 
   // 获取所有题目列表（简化版 - 移除条件逻辑）
@@ -244,6 +317,39 @@ const StudentExam: React.FC = () => {
       ...prev,
       [questionId]: value
     }));
+    
+    // 记录答案变更事件
+    timelineRecorder.recordQuestionEvent(
+      'question_answer_change',
+      questionId,
+      currentQuestionIndex,
+      { answer: value, answerLength: typeof value === 'string' ? value.length : 1 }
+    );
+  };
+
+
+  // 时间线事件处理
+  const handleTimelineEvent = (event: string, timestamp: number, metadata?: any) => {
+    timelineRecorder.recordEvent('custom', {
+      eventName: event,
+      timestamp,
+      ...metadata,
+    }, currentQuestion?.id, currentQuestionIndex);
+  };
+
+  // 情绪分析数据处理
+  const handleEmotionData = (data: any) => {
+    timelineRecorder.recordEmotionEvent('emotion_analysis_data', {
+      emotionData: data,
+    });
+  };
+
+  // 情绪分析完成处理
+  const handleEmotionAnalysisComplete = (analysisId: string) => {
+    setEmotionAnalysisId(analysisId);
+    timelineRecorder.recordEmotionEvent('emotion_analysis_end', {
+      analysisId,
+    });
   };
 
   // 提交考试
@@ -298,6 +404,11 @@ const StudentExam: React.FC = () => {
     setCurrentStep('exam');
     // 记录答题实际开始时间（精确到秒）
     setExamStartTime(new Date());
+    
+    // 记录考试开始事件
+    timelineRecorder.recordEvent('exam_start', {
+      actualStartTime: new Date().toISOString(),
+    });
   };
 
   // 实际提交到服务器
@@ -305,18 +416,42 @@ const StudentExam: React.FC = () => {
     if (!studentInfo || !examUuid) return;
 
     try {
-      // 调用提交API
+      // 结束时间线记录
+      const timelineSession = timelineRecorder.endSession();
+      
+      // 记录考试结束事件
+      const visibleQuestions = getVisibleQuestions();
+      timelineRecorder.recordEvent('exam_end', {
+        actualEndTime: new Date().toISOString(),
+        totalQuestions: visibleQuestions.length,
+        answeredQuestions: Object.keys(answers).length,
+      });
+
+      // 调用提交API，包含AI数据
       const response = await publicApi.submitExam(examUuid, {
         student_id: studentInfo.student_id,
         student_name: studentInfo.student_name,
         answers: answers,
         // 传递实际答题开始时间（精确到秒）
         started_at: examStartTime?.toISOString(),
+        // AI功能数据
+        emotion_analysis_id: emotionAnalysisId,
+        timeline_data: timelineSession,
+        voice_interactions: {
+          enabled: false,
+          // 已切换为音频文件播放模式
+        },
+        device_test_results: deviceTestResults,
       });
 
       if (response.success) {
         // 清除本地保存的答案
         localStorage.removeItem(`exam_${examUuid}_answers`);
+        
+        // 如果有AI报告生成功能，可以在这里触发
+        if (response.data?.result_id && emotionAnalysisId) {
+          generateAIReport(response.data.result_id);
+        }
         
         message.success('提交成功！感谢您的参与');
         setCurrentStep('completed');
@@ -335,6 +470,40 @@ const StudentExam: React.FC = () => {
       }
     }
   };
+
+  // 生成AI报告
+  const generateAIReport = async (examResultId: string) => {
+    try {
+      const reportResponse = await aiApi.generateReport({
+        examResultId,
+        studentAnswers: answers,
+        emotionAnalysisId,
+        timelineData: timelineRecorder.getCurrentSession(),
+        reportType: 'comprehensive',
+        language: 'zh-CN',
+      });
+
+      if (reportResponse.success) {
+        console.log('AI报告生成已启动:', reportResponse.data?.reportId);
+      }
+    } catch (error) {
+      console.error('启动AI报告生成失败:', error);
+    }
+  };
+
+  // 智能题目切换 - 自动停止音频播放
+  const handleQuestionChange = useCallback((newIndex: number) => {
+    // 停止当前播放的音频
+    if (audioPlayerRef.current?.isPlaying) {
+      audioPlayerRef.current.stop();
+    }
+    
+    setQuestionTransition(true);
+    setTimeout(() => {
+      setCurrentQuestionIndex(newIndex);
+      setQuestionTransition(false);
+    }, 150);
+  }, []);
 
   // 格式化时间显示
   const formatTime = (seconds: number): string => {
@@ -906,6 +1075,14 @@ const StudentExam: React.FC = () => {
         </div>
       )}
 
+      {/* 设备测试步骤 */}
+      {currentStep === 'device-test' && (
+        <DeviceTest
+          onTestComplete={handleDeviceTestComplete}
+          onSkip={handleSkipDeviceTest}
+        />
+      )}
+
       {/* 描述确认步骤 - 沉浸式设计 */}
       {currentStep === 'description' && exam && (
         <div style={{
@@ -1048,7 +1225,7 @@ const StudentExam: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
                 <Button 
                   size="large"
-                  onClick={() => setCurrentStep('info')}
+                  onClick={() => setCurrentStep('device-test')}
                   style={{
                     borderRadius: '12px',
                     height: '52px',
@@ -1344,13 +1521,7 @@ const StudentExam: React.FC = () => {
                 }}>
                   <Button
                     disabled={currentQuestionIndex === 0}
-                    onClick={() => {
-                      setQuestionTransition(true);
-                      setTimeout(() => {
-                        setCurrentQuestionIndex(prev => prev - 1);
-                        setQuestionTransition(false);
-                      }, 150);
-                    }}
+                    onClick={() => handleQuestionChange(currentQuestionIndex - 1)}
                     style={{
                       borderRadius: '12px',
                       height: '44px',
@@ -1396,13 +1567,7 @@ const StudentExam: React.FC = () => {
                   ) : (
                     <Button
                       type="primary"
-                      onClick={() => {
-                        setQuestionTransition(true);
-                        setTimeout(() => {
-                          setCurrentQuestionIndex(prev => prev + 1);
-                          setQuestionTransition(false);
-                        }, 150);
-                      }}
+                      onClick={() => handleQuestionChange(currentQuestionIndex + 1)}
                       style={{
                         borderRadius: '12px',
                         height: '44px',
@@ -1443,7 +1608,7 @@ const StudentExam: React.FC = () => {
                           key={index}
                           type={index === currentQuestionIndex ? 'primary' : 'default'}
                           onClick={() => {
-                            setCurrentQuestionIndex(index);
+                            handleQuestionChange(index);
                             setShowQuestionNav(false);
                           }}
                           style={{
@@ -1491,6 +1656,55 @@ const StudentExam: React.FC = () => {
                 </Card>
               )}
             </div>
+          </div>
+
+          {/* AI功能侧边栏 */}
+          <div style={{
+            position: 'fixed',
+            top: '100px',
+            right: '24px',
+            width: '320px',
+            maxHeight: 'calc(100vh - 140px)',
+            overflowY: 'auto',
+            zIndex: 999,
+          }}>
+            <Space direction="vertical" style={{ width: '100%' }} size="small">
+              {/* 音频播放组件 */}
+              {currentQuestion && (
+                <AudioFilePlayer
+                  ref={audioPlayerRef}
+                  audioUrl={audioApi.getPreviewUrl(currentQuestion.id)}
+                  audioStatus="ready"
+                  autoPlay={true}
+                  onPlayStart={() => {
+                    timelineRecorder.recordEvent('custom', {
+                      eventName: 'audio_play_start',
+                      questionId: currentQuestion.id,
+                    });
+                  }}
+                  onPlayComplete={() => {
+                    timelineRecorder.recordEvent('custom', {
+                      eventName: 'audio_play_complete',
+                      questionId: currentQuestion.id,
+                    });
+                  }}
+                  showControls={true}
+                  size="large"
+                />
+              )}
+              
+              {/* 情绪分析组件 */}
+              {deviceTestResults?.cameraPermission && (
+                <EmotionAnalyzer
+                  examId={examUuid || ''}
+                  studentId={studentInfo?.student_id || ''}
+                  onEmotionData={handleEmotionData}
+                  onAnalysisComplete={handleEmotionAnalysisComplete}
+                  onTimelineEvent={handleTimelineEvent}
+                  disabled={!deviceTestResults?.cameraPermission}
+                />
+              )}
+            </Space>
           </div>
 
           {/* 悬浮快捷操作 */}

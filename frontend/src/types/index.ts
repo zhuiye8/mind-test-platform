@@ -86,6 +86,25 @@ export interface Question {
   score_value?: number;
   is_scored?: boolean;
   display_condition?: any;
+  // V1.0.1 新增语音字段
+  audio_status?: string;
+  audio_url?: string | null;
+  audio_duration?: number | null;
+  audio_needs_update?: boolean;
+  audio_error?: string | null;
+  audio_generated_at?: string | null;
+}
+
+// 语音生成建议类型
+export interface AudioSuggestion {
+  shouldGenerateAudio?: boolean;
+  shouldUpdateAudio?: boolean;
+  message: string;
+}
+
+// 包含语音建议的题目响应类型
+export interface QuestionWithAudioSuggestion extends Question {
+  audioSuggestion?: AudioSuggestion;
 }
 
 
@@ -211,4 +230,62 @@ export interface AnalyticsData {
     avg_duration: number;
     created_at: string;
   }>;
+}
+
+// V1.0.1 语音文件管理相关类型
+export interface AudioFileInfo {
+  id: string;
+  status: 'none' | 'pending' | 'generating' | 'ready' | 'error';
+  fileUrl?: string | null;
+  duration?: number | null;
+  contentHash?: string;
+  generatedAt?: string | null;
+  error?: string | null;
+}
+
+export interface PaperAudioStatus {
+  paperId: string;
+  paperTitle: string;
+  totalQuestions: number;
+  statusCount: {
+    none: number;
+    pending: number;
+    generating: number;
+    ready: number;
+    error: number;
+    needUpdate: number;
+  };
+  completionRate: number;
+  totalDuration: number;
+  averageDuration: number;
+  lastGenerated?: string | null;
+}
+
+export interface BatchAudioGenerateRequest {
+  voiceSettings?: {
+    voice?: string;
+    rate?: number;
+    pitch?: number;
+    volume?: number;
+  };
+  forceRegenerate?: boolean;
+}
+
+export interface BatchAudioGenerateResponse {
+  message: string;
+  totalQuestions: number;
+  successCount: number;
+  failedCount: number;
+  errors: string[];
+}
+
+export interface VoiceMatchResult {
+  success: boolean;
+  data?: {
+    matched: boolean;
+    option?: string;
+    confidence?: number;
+    reason?: string;
+  };
+  error?: string;
 }

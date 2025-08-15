@@ -63,6 +63,11 @@ export interface SubmitExamRequest {
   student_name: string;
   answers: ExamAnswers;
   started_at?: string; // 答题开始时间（ISO格式字符串）
+  // AI功能相关数据
+  emotion_analysis_id?: string;
+  timeline_data?: any;
+  voice_interactions?: any;
+  device_test_results?: any;
 }
 
 // 验证考试密码的请求类型

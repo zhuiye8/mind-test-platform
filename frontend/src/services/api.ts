@@ -37,14 +37,19 @@ api.interceptors.response.use(
   (error) => {
     // 当API返回401错误时
     if (error.response?.status === 401) {
-      // 检查当前是否在登录页，如果不是，则重定向到登录页
-      if (window.location.pathname !== '/login') {
+      const currentPath = window.location.pathname;
+      const isStudentPath = currentPath.startsWith('/exam/');
+      const isLoginPage = currentPath === '/login';
+      
+      // 只有教师端（非学生端、非登录页）才跳转到登录页
+      if (!isStudentPath && !isLoginPage) {
         // 清除过期的认证信息
         localStorage.removeItem('auth_token');
         localStorage.removeItem('teacher_info');
         // 使用 window.location.href 来强制刷新页面，确保旧的状态被清除
         window.location.href = '/login';
       }
+      // 学生端的401错误（如密码错误）不跳转，让组件内部处理
     }
     // 对于所有错误（包括登录页的401），都将错误继续抛出，以便组件内部可以捕获和处理
     return Promise.reject(error);
@@ -299,6 +304,11 @@ export const publicApi = {
     student_name: string;
     answers: Record<string, any>;
     started_at?: string; // 答题开始时间（ISO格式）
+    // AI功能相关数据
+    emotion_analysis_id?: string;
+    timeline_data?: any;
+    voice_interactions?: any;
+    device_test_results?: any;
   }): Promise<ApiResponse<{ result_id: string }>> => {
     return api.post(`/public/exams/${uuid}/submit`, data);
   },

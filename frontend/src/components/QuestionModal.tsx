@@ -46,14 +46,15 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
     if (visible) {
       if (question) {
         // 编辑模式：填充现有题目数据
-        const questionIsScored = question.is_scored !== false;
+        // 修复计分字段映射：只有明确为true时才显示为计分
+        const questionIsScored = question.is_scored === true;
         setIsScored(questionIsScored);
         
         form.setFieldsValue({
           title: question.title,
           question_type: question.question_type,
           is_required: question.is_required !== false, // 默认为true，除非明确设置为false
-          is_scored: questionIsScored,
+          is_scored: questionIsScored, // 只有明确为true时才显示为计分
         });
         
         // 转换选项格式 - 兼容多种格式

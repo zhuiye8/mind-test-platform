@@ -18,6 +18,9 @@ import {
   batchReorderQuestions,
   getPaperDependencyGraph,
   validateQuestionCondition,
+  // 语音管理相关API
+  batchGenerateAudio,
+  getPaperAudioStatus,
   // 第二阶段：增强条件逻辑API
   getConditionTemplates,
   previewConditionLogic,
@@ -51,6 +54,10 @@ router.put('/questions/batch-update', batchUpdateQuestions);              // 批
 router.delete('/questions/batch-delete', batchDeleteQuestions);           // 批量删除题目
 router.post('/:paperId/questions/batch-import', batchImportQuestions);    // 批量导入题目
 router.put('/:paperId/questions/batch-reorder', batchReorderQuestions);   // 批量调整排序
+
+// 语音文件管理路由 (V1.0.1 新增)
+router.post('/:paperId/audio/batch-generate', batchGenerateAudio);        // 批量生成语音文件  
+router.get('/:paperId/audio/status', getPaperAudioStatus);                // 获取语音状态概览
 
 // 题目依赖关系和条件逻辑路由
 router.get('/:paperId/questions/dependencies', getPaperDependencyGraph);  // 获取题目依赖关系图

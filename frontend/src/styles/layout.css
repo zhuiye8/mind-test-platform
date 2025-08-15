@@ -1,0 +1,152 @@
+/* 布局专用样式（侧边栏 + 顶部栏 + 主内容区）
+   说明：仅做视觉增强，不改变任何现有交互与逻辑 */
+
+/* 侧边栏 */
+.app-sider {
+  background: var(--color-bg-primary) !important;
+  box-shadow: var(--shadow-sm);
+  border-right: 1px solid var(--color-neutral-100);
+}
+
+/* Logo 区域 */
+.app-logo {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+  border-bottom: 1px solid var(--color-neutral-100);
+  background: var(--color-bg-primary);
+  padding: 0 var(--spacing-3);
+}
+
+.app-logo-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-block;
+}
+
+.app-logo-text {
+  font-size: 16px;
+  color: var(--color-primary-600);
+}
+
+.app-logo.is-collapsed {
+  justify-content: center;
+}
+
+.app-logo.is-collapsed .app-logo-text {
+  display: none;
+}
+
+/* 顶部栏 */
+.app-header {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-bottom: 1px solid var(--color-neutral-100);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(8px);
+  transition: left var(--duration-normal) var(--easing-ease-out);
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--spacing-6);
+  z-index: 99;
+}
+
+.app-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+}
+
+/* 面包屑 */
+.app-breadcrumb {
+  color: var(--color-neutral-600);
+}
+
+.app-breadcrumb .ant-breadcrumb-separator {
+  color: var(--color-neutral-400);
+}
+
+.app-breadcrumb .ant-breadcrumb-link a,
+.app-breadcrumb .ant-breadcrumb-link span {
+  color: var(--color-neutral-700);
+}
+
+/* 小屏隐藏面包屑，保留折叠按钮 */
+@media (max-width: 768px) {
+  .app-breadcrumb { display: none; }
+}
+
+/* 折叠按钮 */
+.app-collapse-btn {
+  font-size: 16px !important;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--border-radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--duration-normal) var(--easing-ease-out);
+}
+
+.app-collapse-btn:hover {
+  background: var(--color-primary-50) !important;
+  color: var(--color-primary-600) !important;
+  transform: translateY(-1px);
+}
+
+.app-collapse-btn:active {
+  transform: translateY(0);
+}
+
+.app-collapse-btn:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* 用户头像交互增强 */
+.app-avatar {
+  background-color: var(--color-primary-500) !important;
+  cursor: pointer;
+  transition: transform var(--duration-normal) var(--easing-ease-out), box-shadow var(--duration-normal) var(--easing-ease-out);
+}
+
+.app-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-md);
+}
+
+/* 主内容区 */
+.app-content {
+  background: var(--color-bg-secondary) !important;
+  padding: var(--spacing-6) !important;
+}
+
+.app-content-inner {
+  background: var(--color-bg-primary);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-6);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-neutral-100);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 响应式优化：移动端顶部栏与内容左边距归零，侧边栏保持不影响现有逻辑 */
+@media (max-width: 768px) {
+  .app-header {
+    left: 0 !important; /* 覆盖内联样式，保证小屏不被侧边距影响 */
+  }
+  .app-layout-main {
+    margin-left: 0 !important; /* 覆盖内联样式，主内容占满宽度 */
+  }
+  .app-content {
+    padding: var(--spacing-4) !important;
+  }
+  .app-content-inner {
+    padding: var(--spacing-4);
+  }
+}
+

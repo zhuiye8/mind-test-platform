@@ -96,6 +96,7 @@ model Question {
   paper     Paper              @relation(fields: [paperId], references: [id], onDelete: Cascade)
   scale     Scale?             @relation(fields: [scaleId], references: [id], onDelete: SetNull)
   responses QuestionResponse[]
+  audio     QuestionAudio?     // 一对一关系
 
   // 数据库索引优化
   @@index([paperId, questionOrder]) // 按试卷ID和题目顺序查询题目
@@ -179,9 +180,17 @@ model ExamResult {
   startedAt              DateTime? @map("started_at")
   submittedAt            DateTime  @default(now()) @map("submitted_at")
 
+  // AI功能相关字段
+  emotionAnalysisId       String?   @map("emotion_analysis_id") // 情绪分析会话ID
+  timelineData           Json?     @map("timeline_data") // 时间线数据
+  voiceInteractions      Json?     @map("voice_interactions") // 语音交互数据
+  deviceTestResults      Json?     @map("device_test_results") // 设备测试结果
+  
   // 关系
   exam              Exam               @relation(fields: [examId], references: [id], onDelete: Cascade)
   questionResponses QuestionResponse[]
+  emotionAnalysis   EmotionAnalysis?   // 一对一关系
+  aiReports         AIReport[]         // 一对多关系
 
   // 数据库索引优化
   @@index([examId, submittedAt(sort: Desc)]) // 按考试ID和提交时间查询结果列表
@@ -189,8 +198,108 @@ model ExamResult {
   @@index([examId, participantName]) // 按考试ID和参与者姓名搜索
   @@index([submittedAt(sort: Desc)]) // 按提交时间查询所有结果
   @@index([totalTimeSeconds]) // 按总用时查询（AI分析用）
+  @@index([emotionAnalysisId]) // AI功能查询优化
 
   // 唯一约束：防止重复提交
   @@unique([examId, participantId])
   @@map("exam_results")
+}
+
+// 情绪分析表
+model EmotionAnalysis {
+  id                    String    @id @default(uuid())
+  examResultId          String    @unique @map("exam_result_id")
+  sessionId             String    @unique @map("session_id") // WebSocket会话ID
+  startTime             DateTime  @map("start_time")
+  endTime               DateTime? @map("end_time")
+  totalDuration         Int?      @map("total_duration") // 总时长（毫秒）
+  framesSent            Int?      @map("frames_sent") // 发送的视频帧数
+  dataPoints            Json?     @map("data_points") // 情绪数据点数组
+  summary               Json?     @map("summary") // 情绪分析摘要
+  apiProvider           String?   @map("api_provider") // API提供商（如"hume_ai", "affectiva"）
+  apiVersion            String?   @map("api_version") // API版本
+  status                String    @default("active") @map("status") // active, completed, failed
+  createdAt             DateTime  @default(now()) @map("created_at")
+  
+  // 关系
+  examResult ExamResult @relation(fields: [examResultId], references: [id], onDelete: Cascade)
+  
+  // 索引优化
+  @@index([sessionId])
+  @@index([startTime, endTime])
+  @@index([status])
+  @@map("emotion_analysis")
+}
+
+// AI报告表
+model AIReport {
+  id                    String    @id @default(uuid())
+  examResultId          String    @map("exam_result_id")
+  reportType            String    @map("report_type") // basic, detailed, comprehensive
+  status                String    @default("generating") @map("status") // generating, completed, failed
+  progress              Int       @default(0) @map("progress") // 0-100
+  content               Json?     @map("content") // 报告内容JSON
+  downloadUrl           String?   @map("download_url") // 下载链接
+  filename              String?   @map("filename") // 文件名
+  fileFormat            String?   @map("file_format") // pdf, docx, txt
+  fileSize              Int?      @map("file_size") // 文件大小（字节）
+  language              String    @default("zh-CN") @map("language") // 报告语言
+  aiProvider            String?   @map("ai_provider") // AI服务提供商
+  aiModel               String?   @map("ai_model") // AI模型名称
+  generationTime        Int?      @map("generation_time") // 生成耗时（毫秒）
+  expiresAt             DateTime? @map("expires_at") // 下载链接过期时间
+  error                 String?   @map("error") // 错误信息
+  createdAt             DateTime  @default(now()) @map("created_at")
+  completedAt           DateTime? @map("completed_at")
+  
+  // 关系
+  examResult ExamResult @relation(fields: [examResultId], references: [id], onDelete: Cascade)
+  
+  // 索引优化
+  @@index([examResultId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([reportType])
+  @@index([expiresAt])
+  @@map("ai_reports")
+}
+
+// 题目语音文件表 - V1.0.1 新增语音文件管理
+model QuestionAudio {
+  id               String    @id @default(uuid())
+  questionId       String    @unique @map("question_id")
+  filename         String    // 原始文件名
+  filePath         String    @map("file_path") // 服务器存储路径
+  fileUrl          String    @map("file_url")  // 访问URL
+  fileSize         Int?      @map("file_size") // 文件大小(字节)
+  duration         Float?    // 音频时长(秒)
+  format           String    @default("mp3") // 音频格式
+  voiceSettings    Json?     @map("voice_settings") // 语音合成设置
+  contentHash      String    @map("content_hash") // 题目内容哈希，用于检测内容变化
+  status           String    @default("pending") @map("status") // pending, generating, ready, error
+  error            String?   @map("error") // 错误信息
+  
+  // 百度TTS异步任务相关字段
+  ttsTaskId        String?   @map("tts_task_id") // 百度TTS任务ID
+  ttsProvider      String?   @default("baidu") @map("tts_provider") // TTS服务提供商
+  ttsTaskStatus    String?   @map("tts_task_status") // Running, Success, Failure
+  ttsTaskCreatedAt DateTime? @map("tts_task_created_at") // 任务创建时间
+  ttsSpeechUrl     String?   @map("tts_speech_url") // 百度TTS返回的音频下载URL
+  ttsAttempts      Int       @default(0) @map("tts_attempts") // 重试次数
+  
+  generatedAt      DateTime? @map("generated_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  
+  // 关系
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  // 索引优化
+  @@index([questionId])
+  @@index([status])
+  @@index([contentHash])
+  @@index([generatedAt])
+  @@index([ttsTaskId]) // 百度TTS任务查询
+  @@index([ttsTaskStatus, ttsTaskCreatedAt]) // 任务状态和创建时间查询
+  @@index([ttsProvider, status]) // 按TTS提供商和状态查询
+  @@map("question_audio")
 }

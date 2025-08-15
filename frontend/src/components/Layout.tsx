@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout as AntLayout, Menu, Button, Avatar, Dropdown, Space, Typography } from 'antd';
+import { Layout as AntLayout, Menu, Button, Avatar, Dropdown, Space, Typography, Breadcrumb } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined,
@@ -12,6 +12,8 @@ import {
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
 import { removeAuthToken, getTeacherInfo } from '../utils/auth';
+import '../styles/layout.css';
+import brain from '../assets/brain.svg';
 
 const { Header, Sider, Content } = AntLayout;
 const { Text } = Typography;
@@ -21,6 +23,44 @@ const Layout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const teacherInfo = getTeacherInfo();
+
+  // 根据当前路径生成面包屑（仅展示，不改变任何路由逻辑）
+  const getBreadcrumbItems = (pathname: string) => {
+    // 将 /exams/123/edit => ['exams','123','edit']
+    const segments = pathname.split('/').filter(Boolean);
+    const items: { title: React.ReactNode }[] = [];
+
+    const first = segments[0] || 'dashboard';
+    const firstMap: Record<string, string> = {
+      dashboard: '仪表板',
+      papers: '试卷管理',
+      exams: '考试管理',
+      analytics: '数据分析',
+    };
+    const firstTitle = firstMap[first] || '仪表板';
+    items.push({ title: firstTitle });
+
+    // 第二、第三级：仅作语义展示
+    if (segments[1]) {
+      const second = segments[1];
+      if (first === 'exams') {
+        if (second === 'create') {
+          items.push({ title: '创建' });
+        } else if (second === 'archive') {
+          items.push({ title: '归档' });
+        } else {
+          items.push({ title: '考试详情' });
+          if (segments[2] === 'edit') {
+            items.push({ title: '编辑' });
+          }
+        }
+      } else if (first === 'papers') {
+        items.push({ title: '试卷详情' });
+      }
+    }
+
+    return items;
+  };
 
   // 菜单项配置
   const menuItems = [
@@ -67,6 +107,7 @@ const Layout: React.FC = () => {
     <AntLayout style={{ height: '100vh', overflow: 'hidden' }}>
       {/* 侧边栏 */}
       <Sider
+        className="app-sider"
         trigger={null}
         collapsible
         collapsed={collapsed}
@@ -82,20 +123,11 @@ const Layout: React.FC = () => {
         }}
       >
         {/* Logo区域 */}
-        <div style={{
-          height: 64,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderBottom: '1px solid #f0f0f0',
-          background: '#fff',
-        }}>
-          <Text strong style={{ 
-            fontSize: collapsed ? 14 : 16,
-            color: '#1890ff' 
-          }}>
-            {collapsed ? '心理' : '心理测试平台'}
-          </Text>
+        <div className={`app-logo ${collapsed ? 'is-collapsed' : ''}`}>
+          <img className="app-logo-icon" src={brain} alt="心理学" />
+          {!collapsed && (
+            <Text strong className="app-logo-text">心理测试平台</Text>
+          )}
         </div>
 
         {/* 导航菜单 */}
@@ -109,9 +141,9 @@ const Layout: React.FC = () => {
         />
       </Sider>
 
-      <AntLayout style={{ marginLeft: collapsed ? 80 : 200, height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <AntLayout className="app-layout-main" style={{ marginLeft: collapsed ? 80 : 200, height: '100vh', display: 'flex', flexDirection: 'column' }}>
         {/* 顶部栏 */}
-        <Header style={{
+        <Header className="app-header" style={{
           background: '#fff',
           padding: '0 24px',
           display: 'flex',
@@ -125,13 +157,18 @@ const Layout: React.FC = () => {
           zIndex: 99,
           transition: 'left 0.2s ease',
         }}>
-          {/* 折叠按钮 */}
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            style={{ fontSize: 16 }}
-          />
+          <div className="app-header-left">
+            {/* 折叠按钮 */}
+            <Button
+              className="app-collapse-btn"
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+              style={{ fontSize: 16 }}
+            />
+            {/* 面包屑 */}
+            <Breadcrumb className="app-breadcrumb" items={getBreadcrumbItems(location.pathname)} />
+          </div>
 
           {/* 用户信息 */}
           <Space>
@@ -140,11 +177,12 @@ const Layout: React.FC = () => {
               menu={{ items: userMenuItems }}
               placement="bottomRight"
             >
-              <Avatar 
-                icon={<UserOutlined />} 
-                style={{ 
+              <Avatar
+                className="app-avatar"
+                icon={<UserOutlined />}
+                style={{
                   backgroundColor: '#1890ff',
-                  cursor: 'pointer' 
+                  cursor: 'pointer'
                 }}
               />
             </Dropdown>
@@ -152,7 +190,7 @@ const Layout: React.FC = () => {
         </Header>
 
         {/* 主内容区 */}
-        <Content style={{
+        <Content className="app-content" style={{
           flex: 1,
           marginTop: 64,
           padding: 24,
@@ -162,7 +200,7 @@ const Layout: React.FC = () => {
           display: 'flex',
           flexDirection: 'column',
         }}>
-          <div style={{
+          <div className="app-content-inner modern-page-enter" style={{
             background: '#fff',
             borderRadius: 8,
             padding: 24,

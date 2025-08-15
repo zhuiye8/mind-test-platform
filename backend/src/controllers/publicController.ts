@@ -205,7 +205,17 @@ export const checkDuplicateSubmission = async (req: Request, res: Response): Pro
 export const submitExamAnswers = async (req: Request, res: Response): Promise<void> => {
   try {
     const { publicUuid } = req.params;
-    const { student_id, student_name, answers, started_at }: SubmitExamRequest = req.body;
+    const { 
+      student_id, 
+      student_name, 
+      answers, 
+      started_at,
+      // AI功能相关数据
+      emotion_analysis_id,
+      timeline_data,
+      voice_interactions,
+      device_test_results
+    }: SubmitExamRequest = req.body;
 
     // 参数验证
     if (!student_id || !student_name || !answers) {
@@ -274,6 +284,11 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
           score,
           ipAddress,
           startedAt: started_at ? new Date(started_at) : now, // 使用前端传递的精确开始时间
+          // AI功能相关数据
+          emotionAnalysisId: emotion_analysis_id || null,
+          timelineData: timeline_data || null,
+          voiceInteractions: voice_interactions || null,
+          deviceTestResults: device_test_results || null,
         },
       });
 

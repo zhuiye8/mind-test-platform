@@ -19,6 +19,7 @@ import {
   Table,
   InputNumber,
   Spin,
+  Tabs,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -33,11 +34,13 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
+  SoundOutlined,
 } from '@ant-design/icons';
 import { paperApi, questionApi } from '../services/api';
-import type { Paper, Question, CreateQuestionForm } from '../types';
+import type { Paper, Question, CreateQuestionForm, QuestionWithAudioSuggestion } from '../types';
 import type { ColumnsType } from 'antd/es/table';
 import QuestionModal from '../components/QuestionModal';
+import AudioManagementPanel from '../components/AudioManagementPanel';
 
 const { Title } = Typography;
 
@@ -53,6 +56,7 @@ const PaperDetail: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [modal, contextHolder] = Modal.useModal();
   const [updating, setUpdating] = useState<string | null>(null); // 正在更新排序的题目ID
+  const [activeTab, setActiveTab] = useState<'questions' | 'audio'>('questions'); // V1.0.1 新增Tab切换
 
   useEffect(() => {
     if (paperId) {
@@ -90,9 +94,10 @@ const PaperDetail: React.FC = () => {
     if (!paperId) return;
 
     try {
+      let response: { success: boolean; data?: QuestionWithAudioSuggestion };
       if (editingQuestion && editingQuestion.id) {
         // 更新题目
-        await questionApi.update(editingQuestion.id, data);
+        response = await questionApi.update(editingQuestion.id, data) as any;
         message.success('题目更新成功');
       } else {
         // 创建题目 - 自动计算题目顺序
@@ -105,8 +110,14 @@ const PaperDetail: React.FC = () => {
           question_order: maxOrder + 1,
         };
         
-        await questionApi.create(paperId, createData);
+        response = await questionApi.create(paperId, createData) as any;
         message.success('题目创建成功');
+      }
+      
+      // 检查是否有语音生成建议（使用简洁的message提示，不强制用户处理）
+      if (response.success && response.data?.audioSuggestion) {
+        const { audioSuggestion } = response.data;
+        message.info(`${audioSuggestion.message}，可在"语音管理"标签页中处理`, 4);
       }
       
       // 重新加载题目列表
@@ -153,11 +164,24 @@ const PaperDetail: React.FC = () => {
 
   // 复制题目
   const handleCopyQuestion = (question: Question) => {
-    // 创建题目副本
+    // 创建题目副本，确保所有关键字段都被复制
     const copyQuestion = {
       ...question,
       id: '', // 清空ID，表示新建
       title: `${question.title} (副本)`,
+      // 确保保留原始的配置字段
+      is_scored: question.is_scored || false,
+      is_required: question.is_required !== false, // 默认为true，除非明确设置为false
+      scale_id: question.scale_id,
+      score_value: question.score_value,
+      display_condition: question.display_condition,
+      // 清除语音相关字段（新题目需要重新生成）
+      audio_status: undefined,
+      audio_url: undefined,
+      audio_duration: undefined,
+      audio_needs_update: undefined,
+      audio_error: undefined,
+      audio_generated_at: undefined,
     };
     
     // 设置为编辑模式，传入复制的题目数据
@@ -606,11 +630,24 @@ const PaperDetail: React.FC = () => {
           </Row>
         </Card>
 
-        {/* 题目列表表格 */}
-        <Card 
-          title={
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>题目列表</span>
+        {/* 主要内容区域 - Tab切换 */}
+        <Card>
+          <Tabs
+            activeKey={activeTab}
+            onChange={(key) => setActiveTab(key as 'questions' | 'audio')}
+            items={[
+              {
+                key: 'questions',
+                label: (
+                  <span>
+                    <FileTextOutlined /> 题目管理
+                  </span>
+                ),
+                children: (
+                  <div>
+                    {/* 题目列表表格内容 */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                      <span style={{ fontWeight: 500 }}>题目列表</span>
               {questions.length > 0 && (
                 <Space>
                   <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
@@ -627,9 +664,8 @@ const PaperDetail: React.FC = () => {
                 </Space>
               )}
             </div>
-          }
-        >
-          {questions.length === 0 ? (
+
+                    {questions.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               description="暂无题目数据"
@@ -661,6 +697,26 @@ const PaperDetail: React.FC = () => {
               }}
             />
           )}
+                  </div>
+                ),
+              },
+              {
+                key: 'audio',
+                label: (
+                  <span>
+                    <SoundOutlined /> 语音管理
+                  </span>
+                ),
+                children: paperId && (
+                  <AudioManagementPanel 
+                    paperId={paperId}
+                    questions={questions}
+                    onQuestionsUpdate={loadPaperDetail}
+                  />
+                ),
+              },
+            ]}
+          />
         </Card>
       </div>
 
