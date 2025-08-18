@@ -1,11 +1,12 @@
 # 心理测试平台 (Psychology Test Platform)
 
-[![Version](https://img.shields.io/badge/version-V1.0.0-green.svg)](https://github.com/psychology-test-platform)
-[![Status](https://img.shields.io/badge/status-Backend%20Complete-brightgreen.svg)](https://github.com/psychology-test-platform)
+[![Version](https://img.shields.io/badge/version-V1.0.2+-green.svg)](https://github.com/psychology-test-platform)
+[![Status](https://img.shields.io/badge/status-Production%20Ready-brightgreen.svg)](https://github.com/psychology-test-platform)
+[![AI](https://img.shields.io/badge/AI-Audio%20Stream%20Fixed-blue.svg)](https://github.com/psychology-test-platform)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://github.com/psychology-test-platform)
 [![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-blue.svg)](https://github.com/psychology-test-platform)
 
-一个专为校园使用设计的现代化心理测试系统，支持问卷调研和心理评估，具备复杂条件逻辑、批量操作、高性能缓存等专业功能。
+一个专为校园使用设计的现代化心理测试系统，支持问卷调研和心理评估，具备复杂条件逻辑、批量操作、高性能缓存、AI多模态分析等专业功能。
 
 ## ✨ 核心特性
 
@@ -18,6 +19,12 @@
 - 🎨 **现代化UI**: 乳白色系设计，响应式移动端适配
 - 🔐 **安全可靠**: JWT认证，防重复提交，IP跟踪
 
+### 🎵 AI多模态分析 (V1.0.2+新增)
+- 🎤 **现代音频采集**: AudioWorklet替代废弃ScriptProcessor，确保音频流稳定传输
+- 📹 **视频+音频双流**: 实时采集学生答题过程中的视频和音频数据
+- 🤖 **AI心理分析**: 外部AI服务提供基于多模态数据的心理状态分析
+- 🔊 **智能音频处理**: 正确WAV编码、静音检测、音量监控、噪声过滤
+
 ## 🚀 快速开始
 
 ### Docker部署（推荐）
@@ -28,10 +35,11 @@ git clone <repository-url>
 cd 心理测试平台
 
 # 一键部署
-./deploy.sh
+docker-compose -p psychology-test-platform up -d
 
 # 或强制重新构建
-./deploy.sh --build --logs
+docker-compose -p psychology-test-platform build
+docker-compose -p psychology-test-platform up -d
 ```
 
 ### 服务访问

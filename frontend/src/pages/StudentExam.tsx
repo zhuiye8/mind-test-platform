@@ -51,6 +51,7 @@ import AudioFilePlayer, { type AudioFilePlayerRef } from '../components/AudioFil
 import { audioApi } from '../services/audioApi';
 // import EmotionAnalyzer from '../components/EmotionAnalyzer'; // 已移除，改用外部AI服务
 import { useTimelineRecorder } from '../utils/timelineRecorder';
+import { encodeWAV, detectSound, calculateVolume } from '../utils/audioEncoder';
 // import { useAIApi } from '../services/aiApi'; // 已移除旧的AI功能
 
 const { Title, Text } = Typography;
@@ -98,6 +99,20 @@ const StudentExam: React.FC = () => {
   const [deviceTestResults, setDeviceTestResults] = useState<any>(null);
   const [aiSessionId, setAiSessionId] = useState<string | null>(null);
   const [examResultId, setExamResultId] = useState<string | null>(null);
+  
+  // 音频流状态监控 (使用useRef避免不必要的重渲染)
+  const audioStreamStatus = useRef<{
+    isActive: boolean;
+    lastDataTime: number | null;
+    totalPacketsSent: number;
+    errors: string[];
+  }>({
+    isActive: false,
+    lastDataTime: null,
+    totalPacketsSent: 0,
+    errors: []
+  });
+  
   const [aiSessionCreated, setAiSessionCreated] = useState<boolean>(false);
   // const [websocketConnected, setWebsocketConnected] = useState<boolean>(false);
   
@@ -501,7 +516,7 @@ const StudentExam: React.FC = () => {
       const retrySuccessful = retryResponse.data.aiSessionId && !retryResponse.data.warning;
       
       if (retrySuccessful) {
-        console.log('[AI会话] AI会话重试成功:', retryResponse.data);
+        // AI会话重试成功
         
         setAiSessionId(retryResponse.data.aiSessionId);
         setExamResultId(retryResponse.data.examResultId);
@@ -510,7 +525,7 @@ const StudentExam: React.FC = () => {
         // 建立WebSocket连接
         const wsConnected = await connectWebSocket(retryResponse.data.aiSessionId);
         if (!wsConnected) {
-          console.warn('[WebSocket] WebSocket重试连接失败，但AI会话已创建');
+          // WebSocket重试连接失败，但AI会话已创建
         }
         
         // 记录AI会话重试成功事件
@@ -525,12 +540,12 @@ const StudentExam: React.FC = () => {
         return true;
       } else {
         // 重试仍然失败
-        console.warn('[AI会话] AI会话重试失败（接口成功但AI失败）:', retryResponse.data.warning || 'aiSessionId为空');
+        // AI会话重试失败
         return false; // 返回false表示重试失败
       }
     } else {
       // 重试请求失败
-      console.warn('[AI会话] AI会话重试请求失败:', retryResponse.error);
+      // AI会话重试请求失败
       return false; // 返回false表示重试失败
     }
   };
@@ -609,7 +624,7 @@ const StudentExam: React.FC = () => {
     }
 
     try {
-      console.log('[AI会话] 开始创建AI分析会话...');
+      // 开始创建AI分析会话
       const startTime = new Date();
       
       const response = await publicApi.createAISession(examUuid, {
@@ -623,7 +638,7 @@ const StudentExam: React.FC = () => {
         const aiSessionCreated = response.data.aiSessionId && !response.data.warning;
         
         if (aiSessionCreated) {
-          console.log('[AI会话] AI会话创建成功:', response.data);
+          // AI会话创建成功
           
           setAiSessionId(response.data.aiSessionId);
           setExamResultId(response.data.examResultId);
@@ -633,7 +648,7 @@ const StudentExam: React.FC = () => {
           if (response.data.aiSessionId) {
             const wsConnected = await connectWebSocket(response.data.aiSessionId);
             if (!wsConnected) {
-              console.warn('[WebSocket] WebSocket连接失败，但AI会话已创建，将继续进行考试');
+              // WebSocket连接失败，但AI会话已创建，将继续进行考试
             }
           }
           
@@ -648,7 +663,7 @@ const StudentExam: React.FC = () => {
           return true;
         } else {
           // AI会话创建失败，但接口返回成功 - 这是关键修复
-          console.warn('[AI会话] AI会话创建失败（接口成功但AI失败）:', response.data.warning || 'aiSessionId为空');
+          // AI会话创建失败
           
           // 保存examResultId，即使AI失败也要保留考试记录
           if (response.data.examResultId) {
@@ -671,7 +686,7 @@ const StudentExam: React.FC = () => {
           }
         }
       } else {
-        console.warn('[AI会话] AI会话创建失败:', response.error || response.data?.warning);
+        // AI会话创建失败
         
         // 显示失败处理对话框，让用户选择
         const errorMsg = getErrorMessage(response.error || response.data?.warning || '');
@@ -724,7 +739,7 @@ const StudentExam: React.FC = () => {
       fromDescription: true,
     });
     
-    console.log(`[答题开始] 学生 ${studentInfo?.student_name} 从描述页进入答题界面`);
+    // 学生开始答题
   };
 
   // 实际提交到服务器
@@ -793,13 +808,13 @@ const StudentExam: React.FC = () => {
   // WebSocket重试连接函数
   const connectWebSocketWithRetry = async (sessionId: string, retryCount: number = 0): Promise<boolean> => {
     if (retryCount >= maxWSRetries) {
-      console.warn(`[WebSocket] 已达到最大重试次数 (${maxWSRetries})，放弃连接`);
+      // WebSocket已达到最大重试次数，放弃连接
       message.warning('WebSocket连接失败，视音频分析功能不可用，但不影响正常答题', 3);
       return false;
     }
 
     setWsConnecting(true);
-    console.log(`[WebSocket] 尝试连接AI服务... (${retryCount + 1}/${maxWSRetries})`);
+    // 尝试连接AI服务
 
     try {
       const socket = io('http://192.168.9.84:5000', {
@@ -821,7 +836,7 @@ const StudentExam: React.FC = () => {
         };
 
         socket.on('connect', () => {
-          console.log(`[WebSocket] 连接成功！会话ID: ${sessionId}`);
+          // WebSocket连接成功
           socketRef.current = socket;
           
           // 连接成功后开始数据采集
@@ -838,8 +853,8 @@ const StudentExam: React.FC = () => {
           resolveOnce(true);
         });
 
-        socket.on('disconnect', (reason: string) => {
-          console.log(`[WebSocket] 连接断开: ${reason}`);
+        socket.on('disconnect', (_reason: string) => {
+          // WebSocket连接断开
           if (!resolved) {
             // 连接断开，尝试重连
             setTimeout(() => {
@@ -848,14 +863,14 @@ const StudentExam: React.FC = () => {
           }
         });
 
-        socket.on('connect_error', (error: any) => {
-          console.error(`[WebSocket] 连接错误 (尝试 ${retryCount + 1}):`, error);
+        socket.on('connect_error', (_error: any) => {
+          // WebSocket连接错误
           socket.disconnect();
           
           if (retryCount < maxWSRetries - 1) {
             // 还有重试机会，使用指数退避策略
             const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
-            console.log(`[WebSocket] ${delay}ms 后进行第 ${retryCount + 2} 次重试...`);
+            // WebSocket稍后重试
             
             setTimeout(() => {
               connectWebSocketWithRetry(sessionId, retryCount + 1).then(resolveOnce);
@@ -869,7 +884,7 @@ const StudentExam: React.FC = () => {
         // 设置总体超时
         setTimeout(() => {
           if (!resolved) {
-            console.warn('[WebSocket] 连接超时');
+            // WebSocket连接超时
             socket.disconnect();
             
             if (retryCount < maxWSRetries - 1) {
@@ -881,12 +896,12 @@ const StudentExam: React.FC = () => {
         }, 12000); // 12秒总超时
       });
     } catch (error) {
-      console.error(`[WebSocket] 连接异常:`, error);
+      // WebSocket连接异常
       setWsConnecting(false);
       
       if (retryCount < maxWSRetries - 1) {
         const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
-        console.log(`[WebSocket] ${delay}ms 后重试...`);
+        // WebSocket稍后重试
         setTimeout(() => {
           connectWebSocketWithRetry(sessionId, retryCount + 1);
         }, delay);
@@ -921,11 +936,14 @@ const StudentExam: React.FC = () => {
 
         // 发送音频数据（如果有麦克风权限）
         if (deviceTestResults?.microphonePermission && stream.getAudioTracks().length > 0) {
-          startAudioCapture(socket, sessionId, stream);
+          // 使用异步调用
+          startAudioCapture(socket, sessionId, stream).catch(_error => {
+            // 音频采集启动失败
+          });
         }
       }
-    } catch (error) {
-      console.warn('[媒体采集] 无法获取媒体流:', error);
+    } catch (_error) {
+      // 无法获取媒体流
       // 即使媒体采集失败，也不影响考试进行
     }
   };
@@ -961,40 +979,200 @@ const StudentExam: React.FC = () => {
     (video as any).sessionVideo = true;
   };
 
-  const startAudioCapture = (socket: Socket, sessionId: string, stream: MediaStream) => {
+  const startAudioCapture = async (socket: Socket, sessionId: string, stream: MediaStream) => {
     try {
+      // 开始初始化现代化音频处理
+      
+      // 创建AudioContext
+      const audioContext = new AudioContext({
+        sampleRate: 44100,
+        latencyHint: 'interactive'
+      });
+
+      // 加载AudioWorklet处理器
+      try {
+        await audioContext.audioWorklet.addModule('/audio-stream-processor.js');
+        // AudioWorklet加载成功
+      } catch (workletError) {
+        // AudioWorklet加载失败，使用fallback方案
+        // Fallback到ScriptProcessor（兼容旧浏览器）
+        return startAudioCaptureFallback(socket, sessionId, stream);
+      }
+
+      // 创建音频源和WorkletNode
+      const source = audioContext.createMediaStreamSource(stream);
+      const workletNode = new AudioWorkletNode(audioContext, 'audio-stream-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCount: 1,
+      });
+
+      // 配置WorkletNode
+      workletNode.port.postMessage({
+        type: 'configure',
+        sampleRate: audioContext.sampleRate,
+        bufferSize: 4096
+      });
+
+      // 监听音频数据
+      workletNode.port.onmessage = (event) => {
+        if (event.data.type === 'audioData') {
+          const audioData = event.data.data as Float32Array;
+          const sampleRate = event.data.sampleRate;
+
+          try {
+            // 检测是否有有效声音（避免发送静音数据）
+            if (detectSound(audioData, 0.005)) {
+              const wavBase64 = encodeWAV(audioData, {
+                sampleRate: sampleRate,
+                bitDepth: 16,
+                channels: 1
+              });
+
+              socket.emit('audio_data', {
+                session_id: sessionId,
+                audio_data: `data:audio/wav;base64,${wavBase64}`
+              });
+              
+              // 更新音频状态监控
+              audioStreamStatus.current.isActive = true;
+              audioStreamStatus.current.lastDataTime = Date.now();
+              audioStreamStatus.current.totalPacketsSent += 1;
+              
+              // 可选：显示音量指示
+              const volume = calculateVolume(audioData);
+              if (volume > 5) { // 只在有明显音量时记录
+                // 发送音频数据
+              }
+            } else {
+              // 记录静音检测
+              // 检测到静音，跳过发送
+            }
+          } catch (encodeError) {
+            // 音频编码失败
+            // 记录错误
+            audioStreamStatus.current.errors = [...audioStreamStatus.current.errors.slice(-9), `编码失败: ${encodeError instanceof Error ? encodeError.message : String(encodeError)}`]; // 保留最近10个错误
+          }
+        }
+      };
+
+      // 连接音频节点（注意：不连接到destination避免回声）
+      source.connect(workletNode);
+
+      // 保存引用以便清理
+      (stream as any).audioContext = audioContext;
+      (stream as any).audioWorkletNode = workletNode;
+      (stream as any).audioSource = source;
+
+      // 现代化音频处理初始化完成
+      
+      // 设置初始状态
+      audioStreamStatus.current.isActive = true;
+      audioStreamStatus.current.errors = [];
+      
+    } catch (error) {
+      // 现代化音频处理失败
+      
+      // 记录错误
+      audioStreamStatus.current.errors = [...audioStreamStatus.current.errors.slice(-9), `AudioWorklet初始化失败: ${error instanceof Error ? error.message : String(error)}`];
+      
+      // Fallback到旧方案
+      return startAudioCaptureFallback(socket, sessionId, stream);
+    }
+  };
+
+  // Fallback方案：使用ScriptProcessor（兼容旧浏览器）
+  const startAudioCaptureFallback = (socket: Socket, sessionId: string, stream: MediaStream) => {
+    try {
+      // 使用ScriptProcessor fallback方案
+      
       const audioContext = new AudioContext();
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
       processor.onaudioprocess = (event) => {
         const audioData = event.inputBuffer.getChannelData(0);
-        const audioArray = Array.from(audioData);
         
-        // 转换为base64编码的WAV数据（简化版）
-        // 将float32音频数据转换为int16数据
-        const int16Array = audioArray.map(sample => Math.max(-32768, Math.min(32767, sample * 32767)));
-        const audioBase64 = btoa(String.fromCharCode(...int16Array));
-        
-        socket.emit('audio_data', {
-          session_id: sessionId,
-          audio_data: `data:audio/wav;base64,${audioBase64}`
-        });
+        try {
+          // 检测是否有有效声音
+          if (detectSound(audioData, 0.005)) {
+            const wavBase64 = encodeWAV(audioData, {
+              sampleRate: audioContext.sampleRate,
+              bitDepth: 16,
+              channels: 1
+            });
+
+            socket.emit('audio_data', {
+              session_id: sessionId,
+              audio_data: `data:audio/wav;base64,${wavBase64}`
+            });
+            
+            // 更新音频状态监控
+            audioStreamStatus.current.isActive = true;
+            audioStreamStatus.current.lastDataTime = Date.now();
+            audioStreamStatus.current.totalPacketsSent += 1;
+            
+            // 显示音量指示
+            const volume = calculateVolume(audioData);
+            if (volume > 5) {
+              // Fallback发送音频数据
+            }
+          }
+        } catch (encodeError) {
+          // Fallback音频编码失败
+          
+          // 记录错误
+          audioStreamStatus.current.errors = [...audioStreamStatus.current.errors.slice(-9), `Fallback编码失败: ${encodeError instanceof Error ? encodeError.message : String(encodeError)}`];
+          
+          try {
+            // 使用原始简化编码作为最后fallback
+            const audioArray = Array.from(audioData);
+            const int16Array = audioArray.map(sample => Math.max(-32768, Math.min(32767, sample * 32767)));
+            const audioBase64 = btoa(String.fromCharCode(...int16Array));
+            
+            socket.emit('audio_data', {
+              session_id: sessionId,
+              audio_data: `data:audio/wav;base64,${audioBase64}`
+            });
+            
+            // 更新状态（使用简化编码成功）
+            audioStreamStatus.current.isActive = true;
+            audioStreamStatus.current.lastDataTime = Date.now();
+            audioStreamStatus.current.totalPacketsSent += 1;
+            
+            // 使用简化编码发送成功
+          } catch (finalError) {
+            // 最终fallback也失败
+            audioStreamStatus.current.errors = [...audioStreamStatus.current.errors.slice(-9), `最终fallback失败: ${finalError instanceof Error ? finalError.message : String(finalError)}`];
+          }
+        }
       };
 
       source.connect(processor);
-      processor.connect(audioContext.destination);
+      // 注意：不连接到destination避免回声
 
       // 保存引用以便清理
       (stream as any).audioContext = audioContext;
       (stream as any).audioProcessor = processor;
+      (stream as any).audioSource = source;
+      
+      // ScriptProcessor fallback初始化完成
+      
+      // 设置fallback状态
+      audioStreamStatus.current.isActive = true;
+      audioStreamStatus.current.errors = [...audioStreamStatus.current.errors, 'AudioWorklet不可用，使用ScriptProcessor fallback'];
+      
     } catch (error) {
-      console.warn('[音频采集] 音频处理失败:', error);
+      // Fallback方案失败
+      
+      // 记录致命错误
+      audioStreamStatus.current.isActive = false;
+      audioStreamStatus.current.errors = [...audioStreamStatus.current.errors.slice(-9), `Fallback初始化失败: ${error instanceof Error ? error.message : String(error)}`];
     }
   };
 
   const disconnectWebSocket = () => {
-    console.log('[WebSocket] 断开连接和清理资源...');
+    // 断开WebSocket连接和清理资源
     
     // 断开Socket连接
     if (socketRef.current) {
@@ -1002,9 +1180,64 @@ const StudentExam: React.FC = () => {
       socketRef.current = null;
     }
 
-    // 停止媒体流
+    // 停止媒体流并清理音频资源
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      // 清理音频相关资源
+      const stream = mediaStreamRef.current;
+      
+      // 清理AudioWorklet相关资源
+      if ((stream as any).audioWorkletNode) {
+        try {
+          (stream as any).audioWorkletNode.port.postMessage({ type: 'stop' });
+          (stream as any).audioWorkletNode.disconnect();
+          (stream as any).audioWorkletNode = null;
+        } catch (error) {
+          // AudioWorkletNode清理失败
+        }
+      }
+
+      // 清理ScriptProcessor相关资源  
+      if ((stream as any).audioProcessor) {
+        try {
+          (stream as any).audioProcessor.disconnect();
+          (stream as any).audioProcessor = null;
+        } catch (error) {
+          // AudioProcessor清理失败
+        }
+      }
+
+      // 清理音频源
+      if ((stream as any).audioSource) {
+        try {
+          (stream as any).audioSource.disconnect();
+          (stream as any).audioSource = null;
+        } catch (error) {
+          // AudioSource清理失败
+        }
+      }
+
+      // 清理AudioContext
+      if ((stream as any).audioContext) {
+        try {
+          const audioContext = (stream as any).audioContext;
+          if (audioContext.state !== 'closed') {
+            audioContext.close();
+          }
+          (stream as any).audioContext = null;
+        } catch (error) {
+          // AudioContext清理失败
+        }
+      }
+
+      // 停止所有媒体轨道
+      mediaStreamRef.current.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (error) {
+          // 停止媒体轨道失败
+        }
+      });
+      
       mediaStreamRef.current = null;
     }
 
@@ -1016,7 +1249,15 @@ const StudentExam: React.FC = () => {
       }
     });
 
-    // setWebsocketConnected(false);
+    // 重置音频状态
+    audioStreamStatus.current = {
+      isActive: false,
+      lastDataTime: null,
+      totalPacketsSent: 0,
+      errors: []
+    };
+
+    // WebSocket资源清理完成
   };
 
   // 组件卸载时清理WebSocket连接

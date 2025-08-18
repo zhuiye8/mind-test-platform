@@ -40,7 +40,7 @@ export const generateAIReport = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    console.log(`[AI控制器] 教师 ${teacherId} 请求生成考试结果 ${examResultId} 的AI报告`);
+    // 教师请求生成AI报告
 
     // 调用AI分析服务生成报告
     const result = await aiAnalysisService.generateReport(examResultId);
@@ -159,19 +159,19 @@ export const endAISession = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    console.log(`[AI控制器] 教师 ${teacherId} 请求手动结束AI会话 ${examResult.aiSessionId}`);
+    // 教师请求手动结束AI会话
 
     // 调用AI分析服务结束会话
     const result = await aiAnalysisService.endSession(examResultId);
 
     if (result.success) {
-      console.log(`[AI控制器] AI会话 ${examResult.aiSessionId} 手动结束成功`);
+      // AI会话手动结束成功
       sendSuccess(res, {
         success: true,
         message: 'AI分析会话已成功结束',
       });
     } else {
-      console.warn(`[AI控制器] AI会话 ${examResult.aiSessionId} 手动结束失败: ${result.error}`);
+      // AI会话手动结束失败
       sendError(res, result.error || '结束AI分析会话失败', 500);
     }
   } catch (error) {
