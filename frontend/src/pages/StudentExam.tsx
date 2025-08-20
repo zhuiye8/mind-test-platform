@@ -51,7 +51,7 @@ import AudioFilePlayer, { type AudioFilePlayerRef } from '../components/AudioFil
 import { audioApi } from '../services/audioApi';
 // import EmotionAnalyzer from '../components/EmotionAnalyzer'; // 已移除，改用外部AI服务
 import { useTimelineRecorder } from '../utils/timelineRecorder';
-import { encodeWAV, detectSound, calculateVolume } from '../utils/audioEncoder';
+import { encodeWAV, detectSound, calculateVolume, arrayBufferToBase64 } from '../utils/audioEncoder';
 // import { useAIApi } from '../services/aiApi'; // 已移除旧的AI功能
 
 const { Title, Text } = Typography;
@@ -106,6 +106,17 @@ const StudentExam: React.FC = () => {
     lastDataTime: number | null;
     totalPacketsSent: number;
     errors: string[];
+    videoStats?: {
+      framesSent: number;
+      lastFrameTime: number;
+      totalDataSent: number;
+    };
+    audioStats?: {
+      totalDataSent: number;
+      avgVolume: number;
+      peakVolume: number;
+      samplesProcessed: number;
+    };
   }>({
     isActive: false,
     lastDataTime: null,
@@ -805,20 +816,123 @@ const StudentExam: React.FC = () => {
     }
   };
 
+  // 原生WebSocket降级连接函数
+  const connectNativeWebSocket = async (_sessionId: string): Promise<boolean> => {
+    try {
+      // 获取AI服务配置
+      const configResponse = await publicApi.getAIServiceConfig();
+      if (!configResponse.success || !configResponse.data?.websocketUrl) {
+        console.error('[原生WebSocket] AI服务配置不可用');
+        return false;
+      }
+
+      const { websocketUrl } = configResponse.data!;
+      if (!websocketUrl) {
+        console.error('[原生WebSocket] WebSocket URL为空');
+        return false;
+      }
+      
+      // 将Socket.IO URL转换为原生WebSocket URL
+      const nativeWsUrl = websocketUrl.replace('/socket.io/', '/ws');
+      
+      console.log(`[原生WebSocket] 尝试降级连接: ${nativeWsUrl}`);
+      
+      const ws = new WebSocket(nativeWsUrl);
+      
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          ws.close();
+          console.error('[原生WebSocket] 连接超时');
+          resolve(false);
+        }, 8000);
+
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          console.log('[原生WebSocket] 降级连接成功');
+          
+          // 实现简化的数据发送（如果AI服务支持原生WebSocket）
+          // 注意：这需要AI服务端支持原生WebSocket协议
+          resolve(true);
+        };
+
+        ws.onerror = (error) => {
+          clearTimeout(timeout);
+          console.error('[原生WebSocket] 降级连接失败:', error);
+          resolve(false);
+        };
+
+        ws.onclose = () => {
+          clearTimeout(timeout);
+          console.warn('[原生WebSocket] 连接关闭');
+          resolve(false);
+        };
+      });
+    } catch (error) {
+      console.error('[原生WebSocket] 降级尝试失败:', error);
+      return false;
+    }
+  };
+
   // WebSocket重试连接函数
   const connectWebSocketWithRetry = async (sessionId: string, retryCount: number = 0): Promise<boolean> => {
     if (retryCount >= maxWSRetries) {
-      // WebSocket已达到最大重试次数，放弃连接
-      message.warning('WebSocket连接失败，视音频分析功能不可用，但不影响正常答题', 3);
-      return false;
+      // Socket.IO连接失败，尝试原生WebSocket降级
+      console.log('[WebSocket] Socket.IO连接失败，尝试原生WebSocket降级...');
+      const nativeSuccess = await connectNativeWebSocket(sessionId);
+      
+      if (!nativeSuccess) {
+        // 所有连接方式都失败，放弃连接
+        message.warning('WebSocket连接失败，视音频分析功能不可用，但不影响正常答题', 3);
+      } else {
+        message.info('已切换到兼容模式，视音频分析功能可能受限', 3);
+      }
+      
+      return nativeSuccess;
     }
 
     setWsConnecting(true);
     // 尝试连接AI服务
 
     try {
-      const socket = io('http://192.168.9.84:5000', {
+      // 首先获取AI服务配置
+      const configResponse = await publicApi.getAIServiceConfig();
+      if (!configResponse.success || !configResponse.data?.websocketUrl) {
+        message.warning('AI分析服务不可用，但不影响正常答题', 3);
+        setWsConnecting(false);
+        return false;
+      }
+
+      const { websocketUrl, available } = configResponse.data!;
+      
+      if (!available) {
+        message.warning('AI分析服务暂时不可用，但不影响正常答题', 3);
+        setWsConnecting(false);
+        return false;
+      }
+
+      console.log(`[WebSocket] 尝试连接AI服务: ${websocketUrl}`);
+      console.log(`[WebSocket] 连接配置:`, {
+        url: websocketUrl,
         transports: ['websocket'],
+        timeout: 8000,
+        reconnection: false,
+        retryCount
+      });
+
+      // 根据重试次数调整传输方式，提高兼容性
+      let transports: string[] = [];
+      if (retryCount === 0) {
+        transports = ['websocket']; // 首次尝试：只使用WebSocket
+      } else if (retryCount === 1) {
+        transports = ['websocket', 'polling']; // 第二次：WebSocket + 轮询
+      } else {
+        transports = ['polling']; // 最后：仅使用轮询
+      }
+      
+      console.log(`[WebSocket] 第${retryCount + 1}次尝试，使用传输方式: ${transports.join(', ')}`);
+
+      const socket = io(websocketUrl!, {
+        transports,
         timeout: 8000, // 8秒超时
         reconnection: false, // 禁用自动重连，我们手动控制
       });
@@ -837,6 +951,14 @@ const StudentExam: React.FC = () => {
 
         socket.on('connect', () => {
           // WebSocket连接成功
+          console.log(`[WebSocket] 连接成功! Socket ID: ${socket.id}`);
+          console.log(`[WebSocket] 连接详情:`, {
+            connected: socket.connected,
+            disconnected: socket.disconnected,
+            transport: socket.io.engine?.transport?.name,
+            retryCount: retryCount
+          });
+          
           socketRef.current = socket;
           
           // 连接成功后开始数据采集
@@ -853,30 +975,59 @@ const StudentExam: React.FC = () => {
           resolveOnce(true);
         });
 
-        socket.on('disconnect', (_reason: string) => {
+        socket.on('disconnect', (reason: string) => {
           // WebSocket连接断开
+          console.warn(`[WebSocket] 连接断开: ${reason}`, {
+            connected: socket.connected,
+            retryCount: retryCount,
+            socketId: socket.id
+          });
+          
           if (!resolved) {
             // 连接断开，尝试重连
+            const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+            console.log(`[WebSocket] ${retryDelay}ms后尝试重连 (第${retryCount + 1}次)`);
             setTimeout(() => {
               connectWebSocketWithRetry(sessionId, retryCount + 1);
-            }, Math.min(1000 * Math.pow(2, retryCount), 10000)); // 指数退避，最大10秒
+            }, retryDelay); // 指数退避，最大10秒
           }
         });
 
-        socket.on('connect_error', (_error: any) => {
+        socket.on('connect_error', (error: any) => {
           // WebSocket连接错误
+          console.error(`[WebSocket] 连接错误 (第${retryCount + 1}次尝试):`, {
+            type: error.type,
+            description: error.description,
+            message: error.message,
+            url: websocketUrl,
+            retryCount: retryCount,
+            transport: error.transport
+          });
+          
+          // 提供详细的错误诊断
+          if (error.type === 'TransportError') {
+            console.error(`[WebSocket] 传输层错误 - 可能的原因:`);
+            console.error(`  1. AI服务未启动或WebSocket端口未开放`);
+            console.error(`  2. 网络防火墙阻止WebSocket连接`);
+            console.error(`  3. AI服务不支持Socket.IO协议`);
+            console.error(`  4. URL格式错误: ${websocketUrl}`);
+          } else if (error.type === 'timeout') {
+            console.error(`[WebSocket] 连接超时 - 检查网络连接和服务响应`);
+          }
+          
           socket.disconnect();
           
           if (retryCount < maxWSRetries - 1) {
             // 还有重试机会，使用指数退避策略
             const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
-            // WebSocket稍后重试
+            console.log(`[WebSocket] ${delay}ms后重试连接 (剩余重试次数: ${maxWSRetries - retryCount - 1})`);
             
             setTimeout(() => {
               connectWebSocketWithRetry(sessionId, retryCount + 1).then(resolveOnce);
             }, delay);
           } else {
             // 所有重试都失败了
+            console.error(`[WebSocket] 所有连接尝试失败，放弃连接`);
             resolveOnce(false);
           }
         });
@@ -896,18 +1047,21 @@ const StudentExam: React.FC = () => {
         }, 12000); // 12秒总超时
       });
     } catch (error) {
-      // WebSocket连接异常
+      // 连接异常：可能是配置获取失败或WebSocket连接异常
       setWsConnecting(false);
       
+      // 如果是网络错误或配置获取失败，进行重试
       if (retryCount < maxWSRetries - 1) {
         const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
-        // WebSocket稍后重试
+        // 稍后重试
         setTimeout(() => {
           connectWebSocketWithRetry(sessionId, retryCount + 1);
         }, delay);
         return false;
       }
       
+      // 最终失败，显示友好提示
+      message.warning('AI分析服务连接失败，但不影响正常答题', 3);
       return false;
     }
   };
@@ -964,10 +1118,37 @@ const StudentExam: React.FC = () => {
         
         const frameData = canvas.toDataURL('image/jpeg', 0.7);
         
-        socket.emit('video_frame', {
-          session_id: sessionId,
-          frame_data: frameData
-        });
+        // 发送视频帧数据并记录统计
+        try {
+          socket.emit('video_frame', {
+            session_id: sessionId,
+            frame_data: frameData
+          });
+          
+          // 更新发送统计（使用现有的音频状态结构）
+          if (!audioStreamStatus.current.videoStats) {
+            audioStreamStatus.current.videoStats = {
+              framesSent: 0,
+              lastFrameTime: Date.now(),
+              totalDataSent: 0
+            };
+          }
+          
+          audioStreamStatus.current.videoStats.framesSent += 1;
+          audioStreamStatus.current.videoStats.lastFrameTime = Date.now();
+          audioStreamStatus.current.videoStats.totalDataSent += frameData.length;
+          
+          // 每50帧打印一次统计信息
+          if (audioStreamStatus.current.videoStats.framesSent % 50 === 0) {
+            console.log(`[视频流] 发送统计:`, {
+              frames: audioStreamStatus.current.videoStats.framesSent,
+              dataSize: (audioStreamStatus.current.videoStats.totalDataSent / 1024 / 1024).toFixed(2) + 'MB',
+              sessionId
+            });
+          }
+        } catch (error) {
+          console.error('[视频流] 发送失败:', error);
+        }
       }
     };
 
@@ -1023,11 +1204,12 @@ const StudentExam: React.FC = () => {
           try {
             // 检测是否有有效声音（避免发送静音数据）
             if (detectSound(audioData, 0.005)) {
-              const wavBase64 = encodeWAV(audioData, {
+              const wavBuffer = encodeWAV(audioData, {
                 sampleRate: sampleRate,
                 bitDepth: 16,
                 channels: 1
               });
+              const wavBase64 = arrayBufferToBase64(wavBuffer);
 
               socket.emit('audio_data', {
                 session_id: sessionId,
@@ -1039,10 +1221,44 @@ const StudentExam: React.FC = () => {
               audioStreamStatus.current.lastDataTime = Date.now();
               audioStreamStatus.current.totalPacketsSent += 1;
               
-              // 可选：显示音量指示
+              // 计算和记录音量和数据统计
               const volume = calculateVolume(audioData);
-              if (volume > 5) { // 只在有明显音量时记录
-                // 发送音频数据
+              const dataSize = wavBase64.length;
+              
+              if (!audioStreamStatus.current.audioStats) {
+                audioStreamStatus.current.audioStats = {
+                  totalDataSent: 0,
+                  avgVolume: 0,
+                  peakVolume: 0,
+                  samplesProcessed: 0
+                };
+              }
+              
+              audioStreamStatus.current.audioStats.totalDataSent += dataSize;
+              audioStreamStatus.current.audioStats.samplesProcessed += 1;
+              audioStreamStatus.current.audioStats.peakVolume = Math.max(
+                audioStreamStatus.current.audioStats.peakVolume, 
+                volume
+              );
+              audioStreamStatus.current.audioStats.avgVolume = 
+                (audioStreamStatus.current.audioStats.avgVolume * (audioStreamStatus.current.audioStats.samplesProcessed - 1) + volume) / 
+                audioStreamStatus.current.audioStats.samplesProcessed;
+              
+              // 每100个音频包打印一次详细统计
+              if (audioStreamStatus.current.totalPacketsSent % 100 === 0) {
+                console.log(`[音频流] 发送统计:`, {
+                  packets: audioStreamStatus.current.totalPacketsSent,
+                  dataSize: (audioStreamStatus.current.audioStats.totalDataSent / 1024 / 1024).toFixed(2) + 'MB',
+                  avgVolume: audioStreamStatus.current.audioStats.avgVolume.toFixed(2),
+                  peakVolume: audioStreamStatus.current.audioStats.peakVolume.toFixed(2),
+                  currentVolume: volume.toFixed(2),
+                  sessionId
+                });
+              }
+              
+              // 如果音量过低，记录静音检测
+              if (volume <= 5) {
+                // 静音数据仍然发送，但标记为低音量
               }
             } else {
               // 记录静音检测

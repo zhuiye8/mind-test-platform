@@ -42,8 +42,11 @@ export class LLMService {
     const prompt = this.buildMatchPrompt(question, options, voiceText);
 
     try {
+      // 使用环境变量配置模型，提供更现代的默认值
+      const modelName = process.env.LLM_MODEL || "openai/gpt-4o-mini";
+      
       const completion = await this.client.chat.completions.create({
-        model: "openai/gpt-3.5-turbo", // 快速响应
+        model: modelName,
         messages: [
           {
             role: "system",

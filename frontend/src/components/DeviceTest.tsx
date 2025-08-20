@@ -122,90 +122,167 @@ const DeviceTest: React.FC<DeviceTestProps> = ({ onTestComplete, onSkip }) => {
 
       console.log(`DeviceTest: 设备检测结果 - 摄像头: ${hasVideoInput}, 麦克风: ${hasAudioInput}`);
 
-      // 3. 获取音频流（通过AudioManager）
-      let audioStream: MediaStream | null = null;
-      let audioResults = {
-        available: false,
-        permission: false
-      };
+      // 3. 同时获取音视频流权限（解决权限对话框冲突问题）
+      let combinedStream: MediaStream | null = null;
+      let audioResults = { available: false, permission: false };
+      let videoResults = { available: false, permission: false };
 
+      // 构建媒体约束
+      const constraints: MediaStreamConstraints = {};
       if (hasAudioInput) {
-        try {
-          audioStream = await audioManager.getSharedAudioStream({
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          });
-
-          const audioTracks = audioStream.getAudioTracks();
-          audioResults = {
-            available: audioTracks.length > 0,
-            permission: audioTracks.length > 0 && audioTracks[0].readyState === 'live'
-          };
-
-          // 初始化音频分析器
-          if (audioResults.permission) {
-            await audioManager.initializeAnalyzer(audioStream);
-            // 开始音量监控
-            audioManager.startVolumeMonitoring(setMicrophoneLevel);
-          }
-
-        } catch (err: any) {
-          console.error('DeviceTest: 音频流获取失败:', err);
-          audioResults = { available: false, permission: false };
-          
-          if (err.name === 'NotAllowedError') {
-            setError('麦克风权限被拒绝，请在浏览器设置中允许麦克风访问');
-          } else if (err.name === 'NotFoundError') {
-            setError('未找到麦克风设备，请检查设备连接');
-          } else {
-            setError(`麦克风测试失败: ${err.message}`);
-          }
-        }
+        constraints.audio = {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        };
       }
-
-      // 4. 获取视频流（独立处理，避免冲突）
-      let videoResults = {
-        available: false,
-        permission: false
-      };
-
       if (hasVideoInput) {
+        constraints.video = {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user'
+        };
+      }
+
+      // 如果有任何设备，尝试获取组合流
+      if (hasAudioInput || hasVideoInput) {
         try {
-          const videoStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-              facingMode: 'user'
+          console.log('DeviceTest: 请求同时获取音视频权限', constraints);
+          
+          // 添加权限请求超时机制（20秒）
+          combinedStream = await Promise.race([
+            navigator.mediaDevices.getUserMedia(constraints),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => {
+                reject(new Error('权限请求超时，请检查浏览器权限对话框'));
+              }, 20000);
+            })
+          ]);
+          
+          // 检查音频轨道
+          const audioTracks = combinedStream.getAudioTracks();
+          if (hasAudioInput) {
+            audioResults = {
+              available: audioTracks.length > 0,
+              permission: audioTracks.length > 0 && audioTracks[0].readyState === 'live'
+            };
+            
+            // 初始化音频分析器
+            if (audioResults.permission) {
+              await audioManager.initializeAnalyzer(combinedStream);
+              audioManager.startVolumeMonitoring(setMicrophoneLevel);
             }
-          });
+          }
 
-          videoStreamRef.current = videoStream;
-          const videoTracks = videoStream.getVideoTracks();
-          videoResults = {
-            available: videoTracks.length > 0,
-            permission: videoTracks.length > 0 && videoTracks[0].readyState === 'live'
-          };
-
-          // 设置视频预览
-          if (videoRef.current && videoResults.permission) {
-            videoRef.current.srcObject = videoStream;
-            await videoRef.current.play();
+          // 检查视频轨道
+          const videoTracks = combinedStream.getVideoTracks();
+          if (hasVideoInput) {
+            videoResults = {
+              available: videoTracks.length > 0,
+              permission: videoTracks.length > 0 && videoTracks[0].readyState === 'live'
+            };
+            
+            // 设置视频预览
+            if (videoRef.current && videoResults.permission) {
+              // 为视频预览创建单独的流（只包含视频轨道）
+              const videoOnlyStream = new MediaStream(videoTracks);
+              videoStreamRef.current = videoOnlyStream;
+              videoRef.current.srcObject = videoOnlyStream;
+              await videoRef.current.play();
+            }
           }
 
         } catch (err: any) {
-          console.error('DeviceTest: 视频流获取失败:', err);
-          videoResults = { available: false, permission: false };
+          console.error('DeviceTest: 获取媒体流失败:', err);
           
+          // 如果同时获取失败，尝试分别获取（fallback策略）
+          console.log('DeviceTest: 尝试分别获取音视频权限 (fallback)');
+          
+          // 尝试单独获取音频
+          if (hasAudioInput && !audioResults.permission) {
+            try {
+              const audioStream = await Promise.race([
+                audioManager.getSharedAudioStream({
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true
+                }),
+                new Promise<never>((_, reject) => {
+                  setTimeout(() => {
+                    reject(new Error('音频权限请求超时'));
+                  }, 15000);
+                })
+              ]);
+              
+              const audioTracks = audioStream.getAudioTracks();
+              audioResults = {
+                available: audioTracks.length > 0,
+                permission: audioTracks.length > 0 && audioTracks[0].readyState === 'live'
+              };
+              
+              if (audioResults.permission) {
+                await audioManager.initializeAnalyzer(audioStream);
+                audioManager.startVolumeMonitoring(setMicrophoneLevel);
+              }
+              
+            } catch (audioErr: any) {
+              console.error('DeviceTest: 音频流获取失败:', audioErr);
+              audioResults = { available: false, permission: false };
+            }
+          }
+
+          // 尝试单独获取视频
+          if (hasVideoInput && !videoResults.permission) {
+            try {
+              const videoStream = await Promise.race([
+                navigator.mediaDevices.getUserMedia({
+                  video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: 'user'
+                  }
+                }),
+                new Promise<never>((_, reject) => {
+                  setTimeout(() => {
+                    reject(new Error('视频权限请求超时'));
+                  }, 15000);
+                })
+              ]);
+              
+              videoStreamRef.current = videoStream;
+              const videoTracks = videoStream.getVideoTracks();
+              videoResults = {
+                available: videoTracks.length > 0,
+                permission: videoTracks.length > 0 && videoTracks[0].readyState === 'live'
+              };
+              
+              if (videoRef.current && videoResults.permission) {
+                videoRef.current.srcObject = videoStream;
+                await videoRef.current.play();
+              }
+              
+            } catch (videoErr: any) {
+              console.error('DeviceTest: 视频流获取失败:', videoErr);
+              videoResults = { available: false, permission: false };
+            }
+          }
+
+          // 设置综合错误信息
           if (err.name === 'NotAllowedError') {
-            setError('摄像头权限被拒绝，请在浏览器设置中允许摄像头访问');
+            setError('设备权限被拒绝，请在浏览器设置中允许摄像头和麦克风访问');
           } else if (err.name === 'NotFoundError') {
-            setError('未找到摄像头设备，请检查设备连接');
+            setError('未找到设备，请检查摄像头和麦克风连接');
+          } else if (err.name === 'NotReadableError') {
+            setError('设备被占用，请关闭其他使用设备的应用程序');
+          } else if (err.message?.includes('权限请求超时')) {
+            setError('权限请求超时，请确保点击浏览器权限对话框中的"允许"按钮');
+          } else {
+            setError(`设备测试失败: ${err.message}`);
           }
         }
       }
 
-      // 5. 汇总测试结果
+      // 4. 汇总测试结果
       const results: DeviceTestResults = {
         cameraAvailable: videoResults.available,
         microphoneAvailable: audioResults.available,

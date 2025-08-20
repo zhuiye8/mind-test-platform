@@ -1,12 +1,11 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import prisma from '../utils/database';
 import { createBaiduTTSService, BaiduTTSService } from './baiduTTSService';
 import { audioProgressService } from './audioProgressService';
 import { AudioBatchProcessor } from './audioBatchProcessor';
-
-const prisma = new PrismaClient();
 
 interface Question {
   id: string;
@@ -44,7 +43,8 @@ export class AudioFileService {
     this.audioDir = path.join(this.uploadDir, 'audio', 'questions');
     this.tempDir = path.join(this.uploadDir, 'temp');
     
-    this.ensureDirectories();
+    // 同步创建目录，避免并发访问问题
+    this.ensureDirectoriesSync();
     this.initializeTTSService();
     this.batchProcessor = new AudioBatchProcessor();
   }
@@ -68,18 +68,20 @@ export class AudioFileService {
   }
 
   /**
-   * 确保目录存在
+   * 确保目录存在（同步版本，避免构造函数中的并发问题）
    */
-  private async ensureDirectories(): Promise<void> {
+  private ensureDirectoriesSync(): void {
     try {
-      await fs.mkdir(this.uploadDir, { recursive: true });
-      await fs.mkdir(this.audioDir, { recursive: true });
-      await fs.mkdir(this.tempDir, { recursive: true });
-      console.log('📁 音频文件目录初始化完成');
+      const fsSync = require('fs');
+      fsSync.mkdirSync(this.uploadDir, { recursive: true });
+      fsSync.mkdirSync(this.audioDir, { recursive: true });
+      fsSync.mkdirSync(this.tempDir, { recursive: true });
+      console.log('📁 音频文件目录同步初始化完成');
     } catch (error) {
       console.error('创建音频目录失败:', error);
     }
   }
+
 
   /**
    * 计算题目内容哈希

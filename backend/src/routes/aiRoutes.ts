@@ -10,11 +10,15 @@ import {
   getAIReportStatus,
   checkAIServiceHealth,
   endAISession,
+  getAIServiceConfig,
 } from '../controllers/aiController';
 
 const router = Router();
 
-// 所有AI路由都需要教师认证
+// AI服务配置接口（公开，学生端需要）
+router.get('/config', getAIServiceConfig);                                     // 获取AI服务配置
+
+// 所有其他AI路由都需要教师认证
 router.use(authenticateToken);
 
 // AI分析相关接口

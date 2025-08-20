@@ -16,9 +16,6 @@ logs/
 *.sqlite
 *.db
 
-# Environment files
-.env*
-
 # IDE files
 .vscode/
 .idea/
@@ -34,6 +31,7 @@ temp/
 
 # Large media files
 *.mp4
+*.mp3
 *.avi
 *.mov
 *.jpg

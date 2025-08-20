@@ -21,6 +21,7 @@ import ExamCreate from './pages/ExamCreate';
 import ExamArchive from './pages/ExamArchive';
 import Analytics from './pages/Analytics';
 import StudentExam from './pages/StudentExam';
+import StreamMonitor from './pages/StreamMonitor';
 import Layout from './components/Layout';
 
 // 工具函数
@@ -71,6 +72,7 @@ const App: React.FC = () => {
               <Route path="exams/:examId" element={<ExamDetail />} />
               <Route path="exams/:examId/edit" element={<ExamCreate />} />
               <Route path="analytics" element={<Analytics />} />
+              <Route path="monitor" element={<StreamMonitor />} />
             </Route>
 
             {/* 404重定向 */}

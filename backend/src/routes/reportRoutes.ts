@@ -1,26 +1,54 @@
 import { Router } from 'express';
 import { aiReportService } from '../services/aiReportService';
 import { authenticateToken } from '../middleware/auth';
+import prisma from '../utils/database';
+import { sendError } from '../utils/response';
 
 const router = Router();
 
 /**
- * 生成AI分析报告
+ * 生成AI分析报告（需要教师权限）
  */
-router.post('/generate/:examResultId', authenticateToken, async (req, res) => {
+router.post('/generate/:examResultId', authenticateToken, async (req, res): Promise<void> => {
   try {
     const { examResultId } = req.params;
     const { useMock = false } = req.query;
     
     if (!examResultId) {
-      res.status(400).json({
-        success: false,
-        error: '缺少考试结果ID'
-      });
+      sendError(res, '缺少考试结果ID', 400);
       return;
     }
 
-    console.log(`📊 开始生成AI报告: ${examResultId}`);
+    // 验证考试结果是否存在并检查教师权限
+    const examResult = await prisma.examResult.findUnique({
+      where: { id: examResultId },
+      include: {
+        exam: {
+          include: {
+            teacher: true,
+          },
+        },
+      },
+    });
+
+    if (!examResult) {
+      sendError(res, '考试结果不存在', 404);
+      return;
+    }
+
+    // 验证教师权限：只能生成自己创建的考试的报告
+    const teacher = req.teacher;
+    if (!teacher || !teacher.teacherId) {
+      sendError(res, '未找到认证信息', 401);
+      return;
+    }
+    
+    if (examResult.exam.teacher.teacherId !== teacher.teacherId) {
+      sendError(res, '无权限访问此考试结果', 403);
+      return;
+    }
+
+    console.log(`📊 开始生成AI报告: ${examResultId} (教师: ${teacher.teacherId})`);
     
     let reportBuffer: Buffer;
     
@@ -33,20 +61,17 @@ router.post('/generate/:examResultId', authenticateToken, async (req, res) => {
     
     // 设置响应头
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="report_${examResultId}_${Date.now()}.txt"`);
+    res.setHeader('Content-Disposition', `attachment; filename="ai_report_${examResultId}_${Date.now()}.txt"`);
     res.setHeader('Content-Length', reportBuffer.length);
     
     // 返回文件
     res.send(reportBuffer);
     
-    console.log(`📊 AI报告生成完成: ${examResultId}`);
+    console.log(`✅ AI报告生成完成: ${examResultId}`);
     
   } catch (error) {
     console.error('生成AI报告失败:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : '报告生成失败'
-    });
+    sendError(res, error instanceof Error ? error.message : '报告生成失败', 500);
   }
 });
 

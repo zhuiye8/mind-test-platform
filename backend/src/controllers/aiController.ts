@@ -34,8 +34,13 @@ export const generateAIReport = async (req: Request, res: Response): Promise<voi
     }
 
     // 验证教师权限：只能查看自己创建的考试的结果
-    const teacherId = (req as any).teacher.teacherId;
-    if (examResult.exam.teacher.teacherId !== teacherId) {
+    const teacher = req.teacher;
+    if (!teacher || !teacher.teacherId) {
+      sendError(res, '未找到认证信息', 401);
+      return;
+    }
+    
+    if (examResult.exam.teacher.teacherId !== teacher.teacherId) {
       sendError(res, '无权限访问此考试结果', 403);
       return;
     }
@@ -90,7 +95,12 @@ export const getAIReportStatus = async (req: Request, res: Response): Promise<vo
     }
 
     // 验证教师权限
-    const teacherId = (req as any).teacher.teacherId;
+    const teacher = req.teacher;
+    if (!teacher || !teacher.teacherId) {
+      sendError(res, '未找到认证信息', 401);
+      return;
+    }
+    const teacherId = teacher.teacherId;
     if (examResult.exam.teacher.teacherId !== teacherId) {
       sendError(res, '无权限访问此考试结果', 403);
       return;
@@ -147,7 +157,12 @@ export const endAISession = async (req: Request, res: Response): Promise<void> =
     }
 
     // 验证教师权限
-    const teacherId = (req as any).teacher.teacherId;
+    const teacher = req.teacher;
+    if (!teacher || !teacher.teacherId) {
+      sendError(res, '未找到认证信息', 401);
+      return;
+    }
+    const teacherId = teacher.teacherId;
     if (examResult.exam.teacher.teacherId !== teacherId) {
       sendError(res, '无权限访问此考试结果', 403);
       return;
@@ -177,6 +192,67 @@ export const endAISession = async (req: Request, res: Response): Promise<void> =
   } catch (error) {
     console.error('[AI控制器] 手动结束AI会话失败:', error);
     sendError(res, '结束AI分析会话失败', 500);
+  }
+};
+
+/**
+ * 获取AI服务配置（供前端动态获取连接地址）
+ * GET /api/ai/config
+ */
+export const getAIServiceConfig = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const isHealthy = await aiAnalysisService.checkHealth();
+    const webSocketHealth = await aiAnalysisService.checkWebSocketHealth();
+
+    console.log(`[AI控制器] 服务配置查询:`);
+    console.log(`  - HTTP健康状态: ${isHealthy}`);
+    console.log(`  - WebSocket健康状态: ${webSocketHealth.available}`);
+    console.log(`  - WebSocket URL: ${webSocketHealth.websocketUrl}`);
+    if (webSocketHealth.error) {
+      console.log(`  - WebSocket错误: ${webSocketHealth.error}`);
+    }
+    if (webSocketHealth.diagnostics) {
+      console.log(`  - 诊断信息:`, webSocketHealth.diagnostics);
+    }
+
+    sendSuccess(res, {
+      websocketUrl: webSocketHealth.websocketUrl, // 使用正确构建的WebSocket地址
+      available: isHealthy && webSocketHealth.available, // 同时检查HTTP和WebSocket
+      features: {
+        sessionCreation: isHealthy,
+        emotionAnalysis: isHealthy && webSocketHealth.available,
+        reportGeneration: isHealthy,
+      },
+      diagnostics: {
+        httpService: isHealthy,
+        websocketService: webSocketHealth.available,
+        websocketError: webSocketHealth.error,
+        responseTime: webSocketHealth.diagnostics?.responseTime || 0,
+        configValid: webSocketHealth.diagnostics?.configValid || false,
+        serviceInfo: webSocketHealth.diagnostics?.serviceInfo,
+      },
+      error: webSocketHealth.error, // 传递具体错误信息给前端
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error('[AI控制器] 获取AI服务配置失败:', error);
+    // AI服务不可用时不应该返回500，而是返回不可用状态
+    sendSuccess(res, {
+      websocketUrl: null,
+      available: false,
+      features: {
+        sessionCreation: false,
+        emotionAnalysis: false,
+        reportGeneration: false,
+      },
+      error: 'AI服务暂时不可用',
+      diagnostics: {
+        httpService: false,
+        websocketService: false,
+        websocketError: error instanceof Error ? error.message : 'Unknown error',
+      },
+      timestamp: new Date().toISOString(),
+    });
   }
 };
 

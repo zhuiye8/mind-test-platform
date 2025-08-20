@@ -21,6 +21,54 @@ router.options('/questions/:questionId/:filename', (req, res) => {
 });
 
 /**
+ * HEAD请求支持 - 检查文件是否存在
+ * HEAD /api/audio/questions/:questionId/:filename
+ */
+router.head('/questions/:questionId/:filename', async (req, res): Promise<void> => {
+  try {
+    const { questionId, filename } = req.params;
+    
+    // 验证文件是否存在
+    const filePath = await audioFileService.getAudioFilePath(questionId, filename);
+    
+    if (!filePath) {
+      res.status(404).end();
+      return;
+    }
+
+    // 检查文件是否真实存在
+    const fs = require('fs').promises;
+    try {
+      const stats = await fs.stat(filePath);
+      
+      // 设置CORS头
+      const origin = req.headers.origin;
+      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      
+      // 设置文件信息头
+      const ext = require('path').extname(filename).toLowerCase();
+      const contentType = ext === '.mp3' ? 'audio/mpeg' : 
+                         ext === '.wav' ? 'audio/wav' : 
+                         ext === '.m4a' ? 'audio/mp4' : 
+                         ext === '.ogg' ? 'audio/ogg' :
+                         'audio/mpeg';
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', stats.size.toString());
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.status(200).end();
+    } catch {
+      res.status(404).end();
+    }
+  } catch (error) {
+    console.error('HEAD请求失败:', error);
+    res.status(500).end();
+  }
+});
+
+/**
  * 公开访问语音文件 - 不需要认证，使用Express sendFile方法
  * GET /api/audio/questions/:questionId/:filename
  */

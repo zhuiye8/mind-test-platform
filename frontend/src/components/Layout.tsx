@@ -6,6 +6,7 @@ import {
   FileTextOutlined,
   ExperimentOutlined,
   BarChartOutlined,
+  MonitorOutlined,
   UserOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
@@ -36,6 +37,7 @@ const Layout: React.FC = () => {
       papers: '试卷管理',
       exams: '考试管理',
       analytics: '数据分析',
+      monitor: '流媒体监测',
     };
     const firstTitle = firstMap[first] || '仪表板';
     items.push({ title: firstTitle });
@@ -84,7 +86,13 @@ const Layout: React.FC = () => {
       icon: <BarChartOutlined />,
       label: '数据分析',
     },
+    {
+      key: '/monitor',
+      icon: <MonitorOutlined />,
+      label: '流媒体监测',
+    },
   ];
+
 
   // 用户下拉菜单
   const userMenuItems = [
@@ -102,6 +110,7 @@ const Layout: React.FC = () => {
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key);
   };
+
 
   return (
     <AntLayout style={{ height: '100vh', overflow: 'hidden' }}>

@@ -1,7 +1,12 @@
 import jwt from 'jsonwebtoken';
 import { JwtPayload } from '../types';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
+// 生产环境强制要求JWT_SECRET
+if (!process.env.JWT_SECRET) {
+  console.error('❌ 安全错误：JWT_SECRET环境变量必须设置！');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 // 生成JWT token

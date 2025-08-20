@@ -10,7 +10,7 @@
 import axios from 'axios';
 import prisma from '../utils/database';
 
-// AI服务配置
+// AI服务配置 - 支持动态配置，不硬编码地址
 const AI_SERVICE_BASE_URL = process.env.AI_SERVICE_URL || 'http://192.168.9.84:5000';
 
 // API接口定义
@@ -66,6 +66,34 @@ export class AIAnalysisService {
   }
 
   /**
+   * 检查AI服务可用性（健康检查）
+   */
+  async checkServiceHealth(): Promise<{
+    available: boolean;
+    error?: string;
+  }> {
+    try {
+      console.log('[AI分析] 检查服务可用性...');
+      const response = await axios.get(`${AI_SERVICE_BASE_URL}/api/health`, {
+        timeout: 5000, // 5秒超时
+      });
+      
+      if (response.status === 200) {
+        console.log('[AI分析] 服务健康检查通过');
+        return { available: true };
+      } else {
+        return { available: false, error: '服务健康检查失败' };
+      }
+    } catch (error: any) {
+      console.warn('[AI分析] 服务不可用:', error.message);
+      return { 
+        available: false, 
+        error: error.code === 'ECONNREFUSED' ? '服务未启动' : error.message 
+      };
+    }
+  }
+
+  /**
    * 创建AI分析会话
    * 触发时机：学生开始考试时调用
    */
@@ -92,13 +120,22 @@ export class AIAnalysisService {
       );
 
       if (response.data.success && response.data.session_id) {
-        // 更新数据库，保存AI会话ID
-        await prisma.examResult.update({
-          where: { id: examResultId },
-          data: { aiSessionId: response.data.session_id },
-        });
-
         console.log(`[AI分析] 会话创建成功: ${response.data.session_id}`);
+        
+        // 如果提供了examResultId，更新数据库（向后兼容）
+        if (examResultId && examResultId.trim() !== '') {
+          try {
+            await prisma.examResult.update({
+              where: { id: examResultId },
+              data: { aiSessionId: response.data.session_id },
+            });
+            console.log(`[AI分析] 已更新考试记录 ${examResultId} 的AI会话ID`);
+          } catch (updateError) {
+            console.warn(`[AI分析] 更新考试记录失败，但AI会话已创建: ${updateError}`);
+            // 不影响会话创建成功的返回结果
+          }
+        }
+        
         return {
           success: true,
           sessionId: response.data.session_id,
@@ -415,13 +452,266 @@ export class AIAnalysisService {
         message: error.message,
         code: error.code,
         status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
         config: {
           url: error.config?.url,
+          method: error.config?.method,
           timeout: error.config?.timeout,
-          proxy: error.config?.proxy,
-        }
+          baseURL: AI_SERVICE_BASE_URL,
+        },
+        isTimeout: error.code === 'ECONNABORTED',
+        isNetworkError: error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND',
       });
       return false;
+    }
+  }
+
+  /**
+   * 检查WebSocket连接可用性 - 增强版本 
+   * 提供更详细的诊断信息和错误分析
+   */
+  async checkWebSocketHealth(): Promise<{
+    available: boolean;
+    websocketUrl: string;
+    error?: string;
+    diagnostics?: {
+      httpReachable: boolean;
+      configValid: boolean;
+      responseTime: number;
+      serviceInfo?: any;
+      networkPath?: string;
+      urlComponents?: {
+        protocol: string;
+        hostname: string;
+        port: string;
+        path: string;
+      };
+      troubleshooting?: string[];
+    };
+  }> {
+    const websocketUrl = this.buildWebSocketUrl(AI_SERVICE_BASE_URL);
+    const startTime = Date.now();
+    
+    const diagnostics = {
+      httpReachable: false,
+      configValid: false,
+      responseTime: 0,
+      serviceInfo: null,
+      networkPath: '',
+      urlComponents: {
+        protocol: '',
+        hostname: '',
+        port: '',
+        path: ''
+      },
+      troubleshooting: [] as string[]
+    };
+
+    try {
+      // 1. 验证配置有效性并解析URL组件
+      if (!AI_SERVICE_BASE_URL || AI_SERVICE_BASE_URL.trim() === '') {
+        return {
+          available: false,
+          websocketUrl,
+          error: 'AI_SERVICE_URL环境变量未配置或为空',
+          diagnostics: {
+            ...diagnostics,
+            troubleshooting: [
+              '在 .env 文件中设置 AI_SERVICE_URL=http://192.168.0.204:5000',
+              '重启后端服务以加载新的环境变量',
+              '确认AI服务的实际IP地址和端口'
+            ]
+          }
+        };
+      }
+
+      try {
+        const parsedUrl = new URL(AI_SERVICE_BASE_URL);
+        diagnostics.configValid = true;
+        diagnostics.urlComponents = {
+          protocol: parsedUrl.protocol,
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? '443' : '80'),
+          path: parsedUrl.pathname
+        };
+        diagnostics.networkPath = `${parsedUrl.protocol}//${parsedUrl.hostname}:${diagnostics.urlComponents.port}`;
+      } catch (urlError) {
+        return {
+          available: false,
+          websocketUrl,
+          error: `AI服务URL格式无效: ${AI_SERVICE_BASE_URL}`,
+          diagnostics: {
+            ...diagnostics,
+            troubleshooting: [
+              '检查URL格式，应该是 http://IP:端口 的格式',
+              '例如：AI_SERVICE_URL=http://192.168.0.204:5000',
+              '确认协议(http/https)、IP地址和端口号都正确'
+            ]
+          }
+        };
+      }
+
+      console.log(`[AI分析] WebSocket健康检查开始:`);
+      console.log(`  🔍 检查目标: ${AI_SERVICE_BASE_URL}`);
+      console.log(`  🌐 WebSocket地址: ${websocketUrl}`);
+      console.log(`  📍 解析结果: ${diagnostics.networkPath}`);
+      console.log(`  ⚙️  环境变量: AI_SERVICE_URL=${process.env.AI_SERVICE_URL || '未设置'}`);
+
+      // 2. 检查HTTP服务可用性
+      console.log(`[AI分析] 正在检查HTTP服务可达性...`);
+      const httpHealth = await this.checkHealth();
+      diagnostics.responseTime = Date.now() - startTime;
+      
+      if (!httpHealth) {
+        const errorMsg = `AI服务HTTP接口不可达`;
+        console.error(`[AI分析] ❌ ${errorMsg}`);
+        console.error(`[AI分析] 🔧 诊断建议:`);
+        console.error(`  1. 检查AI服务是否在 ${diagnostics.networkPath} 运行`);
+        console.error(`  2. 验证IP地址 ${diagnostics.urlComponents.hostname} 是否正确`);
+        console.error(`  3. 检查端口 ${diagnostics.urlComponents.port} 是否开放`);
+        console.error(`  4. 测试网络连通性: ping ${diagnostics.urlComponents.hostname}`);
+        console.error(`  5. 检查防火墙是否阻止连接`);
+        
+        return {
+          available: false,
+          websocketUrl,
+          error: `${errorMsg} (${diagnostics.networkPath})`,
+          diagnostics: {
+            ...diagnostics,
+            troubleshooting: [
+              `在AI服务器上启动服务: python app.py`,
+              `检查服务是否监听 ${diagnostics.urlComponents.port} 端口`,
+              `验证IP地址 ${diagnostics.urlComponents.hostname} 的可达性`,
+              `检查防火墙规则是否允许端口 ${diagnostics.urlComponents.port}`,
+              `确认AI服务的健康检查端点 /api/health 可用`
+            ]
+          }
+        };
+      }
+      
+      diagnostics.httpReachable = true;
+      console.log(`[AI分析] ✅ HTTP服务可达 (${diagnostics.responseTime}ms)`);
+
+      // 3. 尝试获取AI服务详细信息
+      try {
+        console.log(`[AI分析] 正在获取AI服务详细信息...`);
+        const serviceInfoResponse = await axios.get(`${AI_SERVICE_BASE_URL}/info`, {
+          timeout: 3000,
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        diagnostics.serviceInfo = serviceInfoResponse.data;
+        console.log(`[AI分析] 📋 AI服务信息:`, serviceInfoResponse.data);
+      } catch (infoError) {
+        // 获取服务信息失败不影响主要健康检查
+        console.log(`[AI分析] ℹ️  无法获取AI服务详细信息 (非必需功能)`);
+      }
+
+      // 4. 验证Socket.IO端点（可选）
+      try {
+        console.log(`[AI分析] 正在验证Socket.IO端点...`);
+        const socketIoResponse = await axios.get(`${AI_SERVICE_BASE_URL}/socket.io/`, {
+          timeout: 2000,
+          validateStatus: (status) => status < 500 // 接受所有非5xx状态码
+        });
+        console.log(`[AI分析] ✅ Socket.IO端点响应: ${socketIoResponse.status}`);
+      } catch (socketError) {
+        console.log(`[AI分析] ⚠️  Socket.IO端点检查异常 (不影响主要功能)`);
+      }
+
+      // 5. 最终健康检查总结
+      console.log(`[AI分析] 🎉 WebSocket健康检查完成:`);
+      console.log(`  ✅ HTTP服务可达 (${diagnostics.responseTime}ms)`);
+      console.log(`  ✅ WebSocket URL构建: ${websocketUrl}`);
+      console.log(`  ✅ 配置验证通过`);
+      console.log(`  🎯 目标服务: ${diagnostics.networkPath}`);
+      
+      return {
+        available: true,
+        websocketUrl,
+        diagnostics: {
+          ...diagnostics,
+          troubleshooting: [
+            'AI服务运行正常，WebSocket连接应该可用',
+            '如果前端仍有连接问题，请检查浏览器控制台错误信息',
+            '确认前端获取的WebSocket URL与后端一致'
+          ]
+        }
+      };
+      
+    } catch (error: any) {
+      diagnostics.responseTime = Date.now() - startTime;
+      
+      console.error(`[AI分析] ❌ WebSocket健康检查失败:`, error.message);
+      console.error(`[AI分析] 🔍 错误详情:`, {
+        message: error.message,
+        code: error.code,
+        responseTime: diagnostics.responseTime,
+        targetUrl: AI_SERVICE_BASE_URL,
+        networkPath: diagnostics.networkPath
+      });
+
+      // 提供详细的错误分析和解决方案
+      let errorMessage = error.message;
+      let troubleshooting = [] as string[];
+
+      if (error.code === 'ECONNREFUSED') {
+        errorMessage = `连接被拒绝 - AI服务未启动或端口未开放`;
+        troubleshooting = [
+          '在AI服务器上启动服务',
+          '确认服务监听正确的端口',
+          '检查端口是否被其他程序占用',
+          '验证服务配置文件中的端口设置'
+        ];
+      } else if (error.code === 'ENOTFOUND') {
+        errorMessage = `域名或IP地址无法解析 (${diagnostics.urlComponents.hostname})`;
+        troubleshooting = [
+          '检查IP地址是否正确',
+          '验证网络连通性',
+          '确认DNS解析正常',
+          '尝试使用ping命令测试主机可达性'
+        ];
+      } else if (error.code === 'ETIMEDOUT') {
+        errorMessage = `连接超时 - 网络不可达或防火墙阻止`;
+        troubleshooting = [
+          '检查网络连接',
+          '验证防火墙设置',
+          '确认路由配置',
+          '检查VPN或代理设置'
+        ];
+      } else if (error.code === 'ECONNRESET') {
+        errorMessage = `连接被重置 - AI服务可能正在重启`;
+        troubleshooting = [
+          '等待AI服务完全启动',
+          '检查服务日志',
+          '验证服务稳定性',
+          '确认服务配置无误'
+        ];
+      } else {
+        troubleshooting = [
+          '检查AI服务状态',
+          '验证网络配置',
+          '查看详细日志信息',
+          '确认所有依赖服务正常'
+        ];
+      }
+
+      console.error(`[AI分析] 🔧 建议的解决方案:`);
+      troubleshooting.forEach((tip, index) => {
+        console.error(`  ${index + 1}. ${tip}`);
+      });
+
+      return {
+        available: false,
+        websocketUrl,
+        error: `${errorMessage} (${diagnostics.networkPath || AI_SERVICE_BASE_URL})`,
+        diagnostics: {
+          ...diagnostics,
+          troubleshooting
+        }
+      };
     }
   }
 
@@ -462,6 +752,29 @@ export class AIAnalysisService {
   }
 
   /**
+   * 智能构建WebSocket URL
+   * 支持各种协议和端口配置，完全动态化
+   */
+  private buildWebSocketUrl(httpUrl: string): string {
+    try {
+      // 使用URL解析器进行标准化处理
+      const url = new URL(httpUrl);
+      const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+      const websocketUrl = `${protocol}//${url.host}/socket.io/`;
+      
+      console.log(`[AI分析] WebSocket URL构建: ${httpUrl} → ${websocketUrl}`);
+      return websocketUrl;
+    } catch (error) {
+      console.warn(`[AI分析] URL解析失败，使用fallback逻辑: ${error}`);
+      // Fallback到原逻辑，但更加健壮
+      const cleanUrl = httpUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      const websocketUrl = `ws://${cleanUrl}/socket.io/`;
+      console.log(`[AI分析] WebSocket URL fallback构建: ${httpUrl} → ${websocketUrl}`);
+      return websocketUrl;
+    }
+  }
+
+  /**
    * 获取AI服务配置信息
    */
   getServiceInfo() {
@@ -473,7 +786,7 @@ export class AIAnalysisService {
         analyzeQuestions: '/api/analyze_questions',
         health: '/api/health',
       },
-      websocketUrl: `ws://${AI_SERVICE_BASE_URL.replace('http://', '').replace('https://', '')}/socket.io/`,
+      websocketUrl: this.buildWebSocketUrl(AI_SERVICE_BASE_URL),
     };
   }
 }

@@ -6,7 +6,8 @@ import type {
   BatchAudioGenerateResponse 
 } from '../types';
 
-const BASE_URL = import.meta.env.DEV ? 'http://localhost:3001/api' : '/api';
+// const BASE_URL = import.meta.env.DEV ? 'http://localhost:3001/api' : '/api';
+const BASE_URL = '/api';
 
 // 创建专用的axios实例
 const audioApiClient = axios.create({

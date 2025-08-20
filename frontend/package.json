@@ -18,7 +18,8 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.7.1",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.7.5",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",

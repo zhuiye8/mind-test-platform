@@ -1,8 +1,8 @@
 import axios, { type AxiosInstance } from 'axios';
-import type { 
-  ApiResponse, 
-  LoginForm, 
-  LoginResponse, 
+import type {
+  ApiResponse,
+  LoginForm,
+  LoginResponse,
   Paper,
   CreatePaperForm,
   Question,
@@ -15,7 +15,8 @@ import type {
 
 // 创建axios实例
 const api: AxiosInstance = axios.create({
-  baseURL: 'http://localhost:3001/api',
+  // baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api',
+  baseURL: '/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -40,7 +41,7 @@ api.interceptors.response.use(
       const currentPath = window.location.pathname;
       const isStudentPath = currentPath.startsWith('/exam/');
       const isLoginPage = currentPath === '/login';
-      
+
       // 只有教师端（非学生端、非登录页）才跳转到登录页
       if (!isStudentPath && !isLoginPage) {
         // 清除过期的认证信息
@@ -227,7 +228,7 @@ export const analyticsApi = {
   getData: (timeRange: '7d' | '30d' | '90d' | '1y' = '30d'): Promise<ApiResponse<AnalyticsData>> => {
     return api.get('/teacher/analytics', { params: { timeRange } });
   },
-  
+
   // 获取Dashboard综合数据
   getDashboard: (): Promise<ApiResponse<{
     overall_stats: {
@@ -337,6 +338,21 @@ export const publicApi = {
     device_test_results?: any;
   }): Promise<ApiResponse<{ result_id: string }>> => {
     return api.post(`/public/exams/${uuid}/submit`, data);
+  },
+
+  // 获取AI服务配置（公开接口，学生端使用）
+  getAIServiceConfig: (): Promise<ApiResponse<{
+    websocketUrl: string | null;
+    available: boolean;
+    features: {
+      sessionCreation: boolean;
+      emotionAnalysis: boolean;
+      reportGeneration: boolean;
+    };
+    error?: string;
+    timestamp: string;
+  }>> => {
+    return api.get('/ai/config');
   },
 };
 
