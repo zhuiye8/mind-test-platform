@@ -1,0 +1,120 @@
+/* ParticipantExam 动画效果 */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes questionSlide {
+  from {
+    opacity: 0.5;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(79, 70, 229, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(79, 70, 229, 0.6);
+  }
+}
+
+/* 毛玻璃效果 */
+.glassmorphism {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* 渐变文本 */
+.gradient-text {
+  background: linear-gradient(135deg, #4F46E5 0%, #10B981 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 选项悬停效果 */
+.option-hover {
+  transition: all 0.3s ease;
+}
+
+.option-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* 题目卡片动画 */
+.question-card {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.question-transition {
+  animation: questionSlide 0.3s ease-out;
+}
+
+/* 状态栏动画 */
+.status-bar {
+  animation: fadeInUp 0.4s ease-out;
+}
+
+/* 进度条动画 */
+.progress-animate {
+  transition: all 0.5s ease-in-out;
+}
+
+/* 按钮悬停效果 */
+.btn-hover-effect {
+  transition: all 0.3s ease;
+}
+
+.btn-hover-effect:hover {
+  transform: translateY(-2px);
+}
+
+/* 加载动画 */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .question-card {
+    margin: 0 12px;
+  }
+  
+  .status-bar {
+    padding: 8px 16px;
+  }
+}

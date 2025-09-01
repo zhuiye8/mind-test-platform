@@ -5,6 +5,10 @@
 
 import { Router, Request, Response } from 'express';
 import { aiProxyService } from '../services/aiProxyService';
+import { createLogger } from '../utils/logger';
+import { sendSuccess, sendError } from '../utils/response';
+
+const logger = createLogger('AIProxyRoutes');
 
 const router = Router();
 
@@ -14,28 +18,21 @@ const router = Router();
  */
 router.post('/create_session', async (req: Request, res: Response) => {
   try {
-    const { student_id, exam_id } = req.body;
+    const { participant_id, exam_id } = req.body;
     
     const result = await aiProxyService.createSession({
-      student_id,
+      participant_id,
       exam_id
     });
 
     if (result.success && result.data) {
-      res.json(result.data);
+      sendSuccess(res, result.data);
     } else {
-      res.status(502).json({
-        success: false,
-        message: result.error || '代理请求失败',
-        errorCode: result.errorCode || 'PROXY_ERROR'
-      });
+      sendError(res, result.error || '代理请求失败', 502);
     }
   } catch (error) {
-    console.error('[AIProxy路由] 创建会话错误:', error);
-    res.status(500).json({
-      success: false,
-      message: '代理服务内部错误'
-    });
+    logger.error('创建会话错误', error);
+    sendError(res, '代理服务内部错误', 500);
   }
 });
 
@@ -48,10 +45,7 @@ router.post('/end_session', async (req: Request, res: Response) => {
     const { session_id } = req.body;
     
     if (!session_id) {
-      res.status(400).json({
-        success: false,
-        message: '缺少session_id参数'
-      });
+      sendError(res, '缺少session_id参数', 400);
       return;
     }
 
@@ -60,20 +54,13 @@ router.post('/end_session', async (req: Request, res: Response) => {
     });
 
     if (result.success && result.data) {
-      res.json(result.data);
+      sendSuccess(res, result.data);
     } else {
-      res.status(502).json({
-        success: false,
-        message: result.error || '代理请求失败',
-        errorCode: result.errorCode || 'PROXY_ERROR'
-      });
+      sendError(res, result.error || '代理请求失败', 502);
     }
   } catch (error) {
-    console.error('[AIProxy路由] 结束会话错误:', error);
-    res.status(500).json({
-      success: false,
-      message: '代理服务内部错误'
-    });
+    logger.error('结束会话错误', error);
+    sendError(res, '代理服务内部错误', 500);
   }
 });
 
@@ -86,18 +73,12 @@ router.post('/analyze_questions', async (req: Request, res: Response) => {
     const { session_id, questions_data } = req.body;
     
     if (!session_id) {
-      res.status(400).json({
-        success: false,
-        message: '缺少session_id参数'
-      });
+      sendError(res, '缺少session_id参数', 400);
       return;
     }
 
     if (!questions_data || !Array.isArray(questions_data)) {
-      res.status(400).json({
-        success: false,
-        message: 'questions_data必须是数组'
-      });
+      sendError(res, 'questions_data必须是数组', 400);
       return;
     }
 
@@ -107,20 +88,13 @@ router.post('/analyze_questions', async (req: Request, res: Response) => {
     });
 
     if (result.success && result.data) {
-      res.json(result.data);
+      sendSuccess(res, result.data);
     } else {
-      res.status(502).json({
-        success: false,
-        message: result.error || '代理请求失败',
-        errorCode: result.errorCode || 'PROXY_ERROR'
-      });
+      sendError(res, result.error || '代理请求失败', 502);
     }
   } catch (error) {
-    console.error('[AIProxy路由] 分析问题错误:', error);
-    res.status(500).json({
-      success: false,
-      message: '代理服务内部错误'
-    });
+    logger.error('分析问题错误', error);
+    sendError(res, '代理服务内部错误', 500);
   }
 });
 
@@ -133,19 +107,13 @@ router.get('/health', async (_req: Request, res: Response) => {
     const result = await aiProxyService.checkHealth();
     
     if (result.success && result.data) {
-      res.json(result.data);
+      sendSuccess(res, result.data);
     } else {
-      res.status(503).json(result.data || {
-        status: 'unhealthy',
-        message: result.error || '健康检查失败'
-      });
+      sendError(res, result.error || '健康检查失败', 503);
     }
   } catch (error) {
-    console.error('[AIProxy路由] 健康检查错误:', error);
-    res.status(500).json({
-      status: 'error',
-      message: '健康检查失败'
-    });
+    logger.error('健康检查错误', error);
+    sendError(res, '健康检查失败', 500);
   }
 });
 
@@ -159,16 +127,10 @@ router.get('/health', async (_req: Request, res: Response) => {
 router.get('/config', (_req: Request, res: Response) => {
   try {
     const config = aiProxyService.getWebSocketConfig();
-    res.json({
-      success: true,
-      data: config
-    });
+    sendSuccess(res, config);
   } catch (error) {
-    console.error('[AIProxy路由] 获取配置错误:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取配置失败'
-    });
+    logger.error('获取配置错误', error);
+    sendError(res, '获取配置失败', 500);
   }
 });
 

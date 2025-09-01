@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+
 import { comparePassword } from '../utils/password';
 import { generateToken } from '../utils/jwt';
 import { sendSuccess, sendError } from '../utils/response';

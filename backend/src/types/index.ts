@@ -1,8 +1,9 @@
-// 通用API响应类型
+// 通用API响应类型（增强版）
 export interface ApiResponse<T = any> {
   success: boolean;
-  data?: T;
-  error?: string;
+  data: T | null;
+  error: string | { code: string; message: string } | null;
+  timestamp?: string;
 }
 
 // 条件逻辑类型
@@ -55,15 +56,16 @@ export interface CreateExamRequest {
   end_time?: string;
   password?: string;
   shuffle_questions?: boolean;
+  allow_multiple_submissions?: boolean; // 新增：是否允许多次提交
 }
 
 // 提交考试答案的请求类型
 export interface SubmitExamRequest {
-  student_id: string;
-  student_name: string;
+  participant_id: string;
+  participant_name: string;
   answers: ExamAnswers;
   started_at?: string; // 答题开始时间（ISO格式字符串）
-  // AI功能相关数据（已简化，emotion_analysis_id由外部AI服务管理）
+  // AI功能相关数据（移动到ExamInteractionData表）
   timeline_data?: any;
   voice_interactions?: any;
   device_test_results?: any;

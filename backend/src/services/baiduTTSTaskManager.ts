@@ -124,6 +124,13 @@ export class BaiduTTSTaskManager {
       );
 
       if (response.data.error_code) {
+        console.error('百度TTS错误详情:', {
+          error_code: response.data.error_code,
+          error_msg: response.data.error_msg,
+          request_body: requestBody,
+          voice_parameter: this.config.voice,
+          bearer_token: this.config.bearerToken ? '***已配置***' : '未配置'
+        });
         throw new Error(`百度TTS创建任务失败 (${response.data.error_code}): ${response.data.error_msg}`);
       }
 
@@ -380,8 +387,8 @@ export class BaiduTTSTaskManager {
       errors.push('bearerToken is required');
     }
 
-    if (this.config.voice !== undefined && (this.config.voice < 0 || this.config.voice > 511)) {
-      errors.push('voice must be between 0 and 511');
+    if (this.config.voice !== undefined && (this.config.voice < 0 || this.config.voice > 20101)) {
+      errors.push('voice must be between 0 and 20101');
     }
 
     if (this.config.speed !== undefined && (this.config.speed < 0 || this.config.speed > 15)) {

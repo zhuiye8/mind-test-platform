@@ -375,11 +375,219 @@ async function main(): Promise<void> {
     },
   });
 
+  // 创建示例学生考试结果（含时间线数据）
+  const testExamResult = await prisma.examResult.create({
+    data: {
+      examId: asqExam.id,
+      participantId: 'STUDENT001',
+      participantName: '张同学',
+      answers: {
+        [asqQuestionIds[0]]: '3',
+        [asqQuestionIds[1]]: '2', 
+        [asqQuestionIds[2]]: '4',
+        // 模拟部分答题
+      },
+      score: 45,
+      totalQuestions: asqQuestionIds.length,
+      answeredQuestions: 3,
+      totalTimeSeconds: 180,
+      scaleScores: {
+        '家庭生活': 15,
+        '学业表现': 12,
+        '上学出勤': 8
+      },
+      startedAt: new Date(Date.now() - 300000), // 5分钟前开始
+      submittedAt: new Date()
+    }
+  });
+
+  // 创建AI会话测试数据
+  const testAiSession = await prisma.aiSession.create({
+    data: {
+      examResultId: testExamResult.id,
+      examId: asqExam.id,
+      started_at: new Date(Date.now() - 300000),
+      ended_at: new Date(),
+      status: 'ENDED',
+      ai_version: 'ai-service@2.0.0+models-2025-01-01',
+      retention_ttl_sec: 86400
+    }
+  });
+
+  // 创建AI聚合数据
+  await prisma.aiAggregate.createMany({
+    data: [
+      {
+        aiSessionId: testAiSession.id,
+        model: 'ATTENTION',
+        key: 'avg',
+        value_json: { value: 0.81, unit: 'score' }
+      },
+      {
+        aiSessionId: testAiSession.id,
+        model: 'ATTENTION',
+        key: 'low_ratio',
+        value_json: { value: 0.12, unit: 'percentage' }
+      },
+      {
+        aiSessionId: testAiSession.id,
+        model: 'FACE',
+        key: 'occlusion_ratio',
+        value_json: { value: 0.06, unit: 'percentage' }
+      },
+      {
+        aiSessionId: testAiSession.id,
+        model: 'PPG',
+        key: 'hr_avg',
+        value_json: { value: 76, unit: 'bpm' }
+      }
+    ]
+  });
+
+  // 创建AI异常记录
+  await prisma.aiAnomaly.create({
+    data: {
+      aiSessionId: testAiSession.id,
+      code: 'LOOK_AWAY',
+      severity: 'MEDIUM',
+      from_ts: new Date(Date.now() - 120000),
+      to_ts: new Date(Date.now() - 110000),
+      evidence_json: {
+        frames: ['thumb_001.jpg', 'thumb_002.jpg'],
+        confidence: 0.85,
+        duration_ms: 10000
+      }
+    }
+  });
+
+  // 创建AI检查点数据（时间序列）
+  await prisma.aiCheckpoint.createMany({
+    data: [
+      {
+        aiSessionId: testAiSession.id,
+        timestamp: new Date(Date.now() - 180000),
+        snapshot_json: {
+          attention: 0.79,
+          ppg_hr: 75,
+          audio_dominant: 'neutral',
+          face_detected: true
+        }
+      },
+      {
+        aiSessionId: testAiSession.id,
+        timestamp: new Date(Date.now() - 120000),
+        snapshot_json: {
+          attention: 0.65,
+          ppg_hr: 82,
+          audio_dominant: 'stressed',
+          face_detected: false
+        }
+      },
+      {
+        aiSessionId: testAiSession.id,
+        timestamp: new Date(Date.now() - 60000),
+        snapshot_json: {
+          attention: 0.88,
+          ppg_hr: 71,
+          audio_dominant: 'calm',
+          face_detected: true
+        }
+      }
+    ]
+  });
+
+  // 创建学生作答时间线事件
+  await prisma.questionActionEvent.createMany({
+    data: [
+      {
+        examResultId: testExamResult.id,
+        questionId: asqQuestionIds[0],
+        event_type: 'DISPLAY',
+        payload_json: {},
+        occurred_at: new Date(Date.now() - 290000)
+      },
+      {
+        examResultId: testExamResult.id,
+        questionId: asqQuestionIds[0],
+        event_type: 'SELECT',
+        payload_json: {
+          option_after: '3',
+          source: 'click'
+        },
+        occurred_at: new Date(Date.now() - 280000)
+      },
+      {
+        examResultId: testExamResult.id,
+        questionId: asqQuestionIds[0],
+        event_type: 'CHANGE',
+        payload_json: {
+          option_before: '3',
+          option_after: '2',
+          source: 'click'
+        },
+        occurred_at: new Date(Date.now() - 270000)
+      },
+      {
+        examResultId: testExamResult.id,
+        questionId: asqQuestionIds[1],
+        event_type: 'DISPLAY',
+        payload_json: {},
+        occurred_at: new Date(Date.now() - 240000)
+      },
+      {
+        examResultId: testExamResult.id,
+        questionId: asqQuestionIds[1],
+        event_type: 'SELECT',
+        payload_json: {
+          option_after: '2',
+          source: 'voice'
+        },
+        occurred_at: new Date(Date.now() - 220000)
+      }
+    ]
+  });
+
+  // 创建交互数据记录
+  await prisma.examInteractionData.create({
+    data: {
+      examResultId: testExamResult.id,
+      timelineData: [
+        {
+          type: 'DISPLAY',
+          question_id: asqQuestionIds[0],
+          timestamp: new Date(Date.now() - 290000).toISOString()
+        },
+        {
+          type: 'SELECT',
+          question_id: asqQuestionIds[0],
+          timestamp: new Date(Date.now() - 280000).toISOString(),
+          payload: { option: '3', source: 'click' }
+        }
+      ],
+      voiceInteractions: {
+        total_voice_commands: 3,
+        successful_recognitions: 2,
+        voice_quality_avg: 0.82
+      },
+      deviceTestResults: {
+        camera: { status: 'passed', resolution: '720p' },
+        microphone: { status: 'passed', level: 0.75 },
+        network: { status: 'passed', latency_ms: 45 }
+      }
+    }
+  });
+
+  console.log('✅ 创建测试数据完成');
+  console.log(`   - 学生答卷: ${testExamResult.participantName}`);
+  console.log(`   - AI会话: ${testAiSession.id}`);
+  console.log(`   - 时间线事件: 5个行为事件`);
+  console.log(`   - AI数据: 聚合指标 + 异常记录 + 检查点`);
+
   console.log('🎉 心理量表数据播种完成！');
   console.log(`📚 教师账号: T2025001 / 123456`);
-  console.log(`🔗 ASQ压力测评: http://localhost:5173/exam/${asqExam.publicUuid}`);
-  console.log(`🔗 SCARED焦虑筛查: http://localhost:5173/exam/${scaredExam.publicUuid}`);
-  console.log(`🔗 SCAS焦虑量表: http://localhost:5173/exam/${scasExam.publicUuid}`);
+  console.log(`🔗 ASQ压力测评: http://localhost:3000/exam/${asqExam.publicUuid}`);
+  console.log(`🔗 SCARED焦虑筛查: http://localhost:3000/exam/${scaredExam.publicUuid}`);
+  console.log(`🔗 SCAS焦虑量表: http://localhost:3000/exam/${scasExam.publicUuid}`);
   console.log(`📊 数据统计:`);
   console.log(`   - ASQ: 10维度, 56题 (1-5分制, 总分56-280)`);
   console.log(`   - SCARED: 扁平结构, 41题 (0-2分制, 总分0-82)`);

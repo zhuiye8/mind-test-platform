@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Form, Input, Button, Typography, Alert, Space, Divider, message } from 'antd';
+import { Card, Form, Input, Button, Typography, Alert, Space, Divider, App } from 'antd';
 import { UserOutlined, LockOutlined, SafetyOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
@@ -16,6 +16,7 @@ const Login: React.FC = () => {
   const [capsLockOn, setCapsLockOn] = useState(false);
   const navigate = useNavigate();
   const [form] = Form.useForm<LoginForm>();
+  const { message } = App.useApp();
 
   // 提交登录：不改变原有逻辑
   const handleLogin = async (values: LoginForm) => {
@@ -151,7 +152,7 @@ const Login: React.FC = () => {
 
         <div className="legal">
           <Text type="secondary" style={{ fontSize: 12 }}>
-            © 2024 心理测评云平台
+            © 2025 心理测评云平台
           </Text>
         </div>
       </section>

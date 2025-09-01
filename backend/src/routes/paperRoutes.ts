@@ -27,7 +27,7 @@ import {
   batchSetConditionLogic,
   exportConditionLogicConfig,
   importConditionLogicConfig,
-} from '../controllers/questionController';
+} from '../controllers/question';
 import { authenticateToken } from '../middleware/auth';
 
 const router = Router();

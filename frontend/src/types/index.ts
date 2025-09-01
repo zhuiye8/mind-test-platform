@@ -123,6 +123,7 @@ export interface Exam {
   public_uuid: string;
   title: string;
   paper_title: string;
+  paper_id?: string; // 仅在详情接口中返回
   duration_minutes: number;
   question_count: number;
   participant_count: number;
@@ -130,23 +131,11 @@ export interface Exam {
   end_time: string | null;
   has_password: boolean;
   shuffle_questions: boolean;
+  allow_multiple_submissions: boolean;
   status: ExamStatusType;
   public_url: string;
   created_at: string;
   updated_at: string;
-  
-  // 为了向后兼容，保留驼峰字段名
-  paperId?: string;
-  teacherId?: string;
-  publicUuid?: string;
-  questionIdsSnapshot?: string[] | string;
-  shuffleQuestions?: boolean;
-  password?: string | null;
-  startTime?: string | null;
-  endTime?: string | null;
-  durationMinutes?: number;
-  createdAt?: string;
-  updatedAt?: string;
   paper?: {
     title: string;
   };
@@ -164,6 +153,7 @@ export interface CreateExamForm {
   end_time?: string;
   password?: string;
   shuffle_questions: boolean;
+  allow_multiple_submissions: boolean;
 }
 
 // 题目作答记录类型
@@ -197,9 +187,7 @@ export interface ExamResult {
   total_time_seconds?: number;
   scale_scores?: Record<string, number>; // 各维度得分
   
-  // 向后兼容字段
-  student_id?: string;
-  student_name?: string;
+  // V2.0: Removed legacy compatibility fields - all naming now unified
 }
 
 // 分析数据类型

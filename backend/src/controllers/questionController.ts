@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+
 import { sendSuccess, sendError } from '../utils/response';
 import { CreateQuestionRequest } from '../types';
 import prisma from '../utils/database';
@@ -1509,7 +1510,7 @@ export const getPaperDependencyGraph = async (req: Request, res: Response): Prom
         dependencies: {
           direct: dependencies.directDependencies,
           indirect: dependencies.indirectDependencies,
-          total_count: dependencies.allDependencies.length,
+          total_count: dependencies.totalDependencies,
         },
         dependent_questions: graphData.edges
           .filter(edge => edge.from === question.id)

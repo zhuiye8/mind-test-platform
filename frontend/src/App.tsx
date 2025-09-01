@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, App as AntApp, message } from 'antd';
+import { ConfigProvider, App as AntApp } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
@@ -9,6 +9,7 @@ import 'dayjs/locale/zh-cn';
 import { antdTheme } from './styles/theme';
 import './styles/global.css';
 import './styles/antd-overrides.css';
+import './styles/animations.css';
 
 // 页面组件
 import Login from './pages/Login';
@@ -20,8 +21,7 @@ import ExamDetail from './pages/ExamDetail';
 import ExamCreate from './pages/ExamCreate';
 import ExamArchive from './pages/ExamArchive';
 import Analytics from './pages/Analytics';
-import StudentExam from './pages/StudentExam';
-import StreamMonitor from './pages/StreamMonitor';
+import ParticipantExam from './pages/ParticipantExam';
 import Layout from './components/Layout';
 
 // 工具函数
@@ -30,13 +30,7 @@ import { isAuthenticated } from './utils/auth';
 // 设置dayjs中文语言
 dayjs.locale('zh-cn');
 
-// 配置message组件全局样式
-message.config({
-  top: 80, // 距离顶部80px，避免被固定头部遮挡
-  duration: 3, // 显示时长3秒
-  maxCount: 3, // 最多同时显示3个
-  rtl: false, // 左对齐
-});
+// message配置现在通过App组件的messageConfig prop设置
 
 // 私有路由组件
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -49,12 +43,18 @@ const App: React.FC = () => {
       locale={zhCN}
       theme={antdTheme}
     >
-      <AntApp>
+      <AntApp 
+        message={{
+          top: 80,
+          duration: 3,
+          maxCount: 3
+        }}
+      >
         <Router>
           <Routes>
             {/* 公开路由 */}
             <Route path="/login" element={<Login />} />
-            <Route path="/exam/:examUuid" element={<StudentExam />} />
+            <Route path="/exam/:examUuid" element={<ParticipantExam />} />
             
             {/* 私有路由 */}
             <Route path="/" element={
@@ -72,7 +72,6 @@ const App: React.FC = () => {
               <Route path="exams/:examId" element={<ExamDetail />} />
               <Route path="exams/:examId/edit" element={<ExamCreate />} />
               <Route path="analytics" element={<Analytics />} />
-              <Route path="monitor" element={<StreamMonitor />} />
             </Route>
 
             {/* 404重定向 */}

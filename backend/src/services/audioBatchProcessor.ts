@@ -1,11 +1,9 @@
-import { PrismaClient } from '@prisma/client';
 import { BaiduTTSTaskManager, createBaiduTTSTaskManager, TaskStatusSummary } from './baiduTTSTaskManager';
 import { AudioFileDownloader } from './audioFileDownloader';
 import { TTSProgressController } from './ttsProgressController';
 import path from 'path';
 import crypto from 'crypto';
-
-const prisma = new PrismaClient();
+import prisma from '../utils/database';
 
 /**
  * 批量处理结果
@@ -49,13 +47,28 @@ export class AudioBatchProcessor {
   private readonly audioDir: string;
   private ttsTaskManager: BaiduTTSTaskManager | null = null;
   private downloader: AudioFileDownloader;
+  
+  // 静态初始化控制
+  private static isInitialized = false;
 
   constructor() {
     this.uploadDir = path.join(process.cwd(), 'uploads');
     this.audioDir = path.join(this.uploadDir, 'audio', 'questions');
     this.downloader = new AudioFileDownloader();
     
+    this.initializeTTSServiceOnce();
+  }
+  
+  /**
+   * 确保TTS服务只初始化一次
+   */
+  private initializeTTSServiceOnce(): void {
+    if (AudioBatchProcessor.isInitialized) {
+      return;
+    }
+    
     this.initializeTTSService();
+    AudioBatchProcessor.isInitialized = true;
   }
 
   /**
@@ -67,7 +80,7 @@ export class AudioBatchProcessor {
       if (token) {
         this.ttsTaskManager = createBaiduTTSTaskManager(token, {
           format: 'mp3-16k',
-          voice: 0,
+          voice: 4105, 
           lang: 'zh',
           speed: 5,
           pitch: 5,
@@ -355,6 +368,12 @@ export class AudioBatchProcessor {
 
     // 获取下载URL映射
     const downloadUrls = this.ttsTaskManager?.getDownloadUrls(summary.successTasks) || new Map();
+    console.log(`📥 获取到${downloadUrls.size}个下载URL`);
+    
+    // 打印所有下载URL（用于调试）
+    downloadUrls.forEach((url, taskId) => {
+      console.log(`🔗 任务${taskId}: ${url.substring(0, 100)}...`);
+    });
     
     // 准备下载任务
     const downloadTasks = [];

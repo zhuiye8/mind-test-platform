@@ -84,3 +84,7 @@ temp/
 
 # Claude Code specific (if using)
 .claude/
+
+*.pyc
+
+emotion/*

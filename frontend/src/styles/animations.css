@@ -123,6 +123,14 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+/* 泳道头部悬浮阴影（收起时） */
+.kanban-lane-header.collapsed {
+  transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.kanban-lane-header.collapsed:hover {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
 /* 加载骨架动画 */
 @keyframes shimmer {
   0% {

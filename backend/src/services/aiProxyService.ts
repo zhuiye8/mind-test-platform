@@ -1,9 +1,13 @@
 /**
+
  * AI服务代理
  * 作为中间层转发前端请求到AI服务，解决CORS跨域问题
  */
 
 import axios from 'axios';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('AIProxyService');
 
 // 定义返回类型
 export interface ProxyResult<T = any> {
@@ -15,7 +19,7 @@ export interface ProxyResult<T = any> {
 }
 
 // AI服务配置
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://192.168.0.204:5000';
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5000';
 
 /**
  * AI代理服务类
@@ -28,18 +32,18 @@ class AIProxyService {
     this.aiServiceUrl = AI_SERVICE_URL;
     this.timeout = 30000; // 30秒超时
     
-    console.log('[AIProxy] 初始化AI代理服务，目标地址:', this.aiServiceUrl);
+    logger.info(`初始化AI代理服务，目标地址: ${this.aiServiceUrl}`);
   }
 
   /**
    * 创建AI分析会话
    */
   async createSession(data: {
-    student_id?: string;
+    participant_id?: string;
     exam_id?: string;
   }): Promise<ProxyResult> {
     try {
-      console.log('[AIProxy] 创建会话请求:', data);
+      logger.info('创建会话请求', data);
       
       const response = await axios.post(
         `${this.aiServiceUrl}/api/create_session`,
@@ -52,13 +56,13 @@ class AIProxyService {
         }
       );
 
-      console.log('[AIProxy] 创建会话成功:', response.data.session_id);
+      logger.info(`创建会话成功: ${response.data.session_id}`);
       return {
         success: true,
         data: response.data
       };
     } catch (error) {
-      console.error('[AIProxy] 创建会话失败:', error);
+      logger.error('创建会话失败', error);
       return this.handleError(error, '创建会话');
     }
   }
@@ -70,7 +74,7 @@ class AIProxyService {
     session_id: string;
   }): Promise<ProxyResult> {
     try {
-      console.log('[AIProxy] 结束会话请求:', data.session_id);
+      logger.info(`结束会话请求: ${data.session_id}`);
       
       const response = await axios.post(
         `${this.aiServiceUrl}/api/end_session`,
@@ -83,13 +87,13 @@ class AIProxyService {
         }
       );
 
-      console.log('[AIProxy] 结束会话成功');
+      logger.info('结束会话成功');
       return {
         success: true,
         data: response.data
       };
     } catch (error) {
-      console.error('[AIProxy] 结束会话失败:', error);
+      logger.error('结束会话失败', error);
       return this.handleError(error, '结束会话');
     }
   }
@@ -107,8 +111,8 @@ class AIProxyService {
     }>;
   }): Promise<ProxyResult> {
     try {
-      console.log('[AIProxy] 分析问题请求，会话ID:', data.session_id);
-      console.log('[AIProxy] 问题数量:', data.questions_data.length);
+      logger.info(`分析问题请求，会话ID: ${data.session_id}`);
+      logger.info(`问题数量: ${data.questions_data.length}`);
       
       const response = await axios.post(
         `${this.aiServiceUrl}/api/analyze_questions`,
@@ -121,13 +125,13 @@ class AIProxyService {
         }
       );
 
-      console.log('[AIProxy] 分析完成，报告长度:', response.data.report?.length || 0);
+      logger.info(`分析完成，报告长度: ${response.data.report?.length || 0}`);
       return {
         success: true,
         data: response.data
       };
     } catch (error) {
-      console.error('[AIProxy] 分析问题失败:', error);
+      logger.error('分析问题失败', error);
       return this.handleError(error, '分析问题');
     }
   }
@@ -154,7 +158,7 @@ class AIProxyService {
         }
       };
     } catch (error) {
-      console.error('[AIProxy] 健康检查失败:', error);
+      logger.error('健康检查失败', error);
       return {
         success: false,
         error: '无法连接到AI服务',
@@ -168,22 +172,27 @@ class AIProxyService {
   }
 
   /**
-   * 获取WebSocket配置
-   * 返回AI服务的WebSocket地址供前端直连
+   * 获取WebSocket配置 - V2重构版
+   * 返回简化的直连配置，支持前端直接连接AI服务
+   * 🔧 基于成功demo的简化策略
    */
   getWebSocketConfig() {
-    // 将HTTP URL转换为WebSocket URL
-    const wsUrl = this.aiServiceUrl
-      .replace('http://', 'ws://')
-      .replace('https://', 'wss://') + '/socket.io/';
+    // 🎯 V2简化策略：直接返回AI服务地址
+    const directUrl = 'http://localhost:5000';  // 使用HTTP协议，让Socket.IO自动处理
+    
+    logger.info(`V2配置: 返回简化直连地址: ${directUrl}`);
+    logger.info('传输策略: polling优先，避免WebSocket升级问题');
 
     return {
-      websocketUrl: wsUrl,
+      url: directUrl,           // 简化为直接URL
+      path: '/socket.io/',      // 标准Socket.IO路径
+      transports: ['polling', 'websocket'],  // polling优先策略
       available: true,
+      version: '2.0.0',        // 标记为V2版本
       features: {
         sessionCreation: true,
-        emotionAnalysis: true,
-        reportGeneration: true
+        audioVideoStream: true,
+        realTimeAnalysis: true
       },
       timestamp: new Date().toISOString()
     };

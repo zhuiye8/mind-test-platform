@@ -24,6 +24,9 @@
   ],
   "author": "心理测试系统开发团队",
   "license": "MIT",
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "dependencies": {
     "@prisma/client": "^6.13.0",
     "@types/node-fetch": "^2.6.13",

@@ -108,7 +108,7 @@ export const getTeacherPapers = async (req: Request, res: Response): Promise<voi
       updated_at: paper.updatedAt,
     }));
 
-    console.log(formattedPapers)
+    console.log('获取试卷列表', { count: formattedPapers.length });
     sendSuccess(res, formattedPapers);
   } catch (error) {
     console.error('获取试卷列表错误:', error);

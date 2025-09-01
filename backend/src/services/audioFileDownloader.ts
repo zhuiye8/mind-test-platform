@@ -1,4 +1,5 @@
 import axios from 'axios';
+
 import fs from 'fs/promises';
 import path from 'path';
 import { createWriteStream } from 'fs';
@@ -84,6 +85,9 @@ export class AudioFileDownloader {
         }
 
         console.log(`✅ 音频文件下载成功: ${outputPath} (${validation.fileSize} bytes)`);
+        console.log(`📁 文件保存位置: ${outputPath}`);
+        console.log(`📏 文件大小: ${validation.fileSize} bytes`);
+        console.log(`⏱️ 音频时长: ${validation.duration || '未知'} 秒`);
 
         return {
           success: true,

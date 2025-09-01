@@ -57,8 +57,8 @@ const ParticipantModal: React.FC<{
         // 转换数据格式为表格需要的格式
         const formattedParticipants = response.data.data.map((result: any) => ({
           id: result.id,
-          student_id: result.participant_id,
-          student_name: result.participant_name,
+          participant_id: result.participant_id,
+          participant_name: result.participant_name,
           submitted_at: result.submitted_at,
           score: result.score,
           ip_address: result.ip_address,
@@ -79,13 +79,13 @@ const ParticipantModal: React.FC<{
   const participantColumns: ColumnsType<any> = [
     {
       title: '学号',
-      dataIndex: 'student_id',
-      key: 'student_id',
+      dataIndex: 'participant_id',
+      key: 'participant_id',
     },
     {
       title: '姓名',
-      dataIndex: 'student_name',
-      key: 'student_name',
+      dataIndex: 'participant_name',
+      key: 'participant_name',
     },
     {
       title: '分数',
@@ -181,8 +181,7 @@ const Analytics: React.FC = () => {
   // 导出分析报告
   const handleExportReport = async () => {
     try {
-      // 模拟导出功能
-      message.success('导出功能开发中，敬请期待');
+      message.error('导出功能尚未实现');
     } catch (error) {
       console.error('导出失败:', error);
       message.error('导出失败');

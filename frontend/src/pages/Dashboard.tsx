@@ -417,7 +417,7 @@ const Dashboard: React.FC = () => {
             }
             className="modern-card-enter border-0"
             style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-            bodyStyle={{ flex: 1, overflow: 'auto', padding: '16px' }}
+            styles={{ body: { flex: 1, overflow: 'auto', padding: '16px' } }}
             loading={loading}
           >
             {dashboardData?.recent_papers && dashboardData.recent_papers.length > 0 ? (
@@ -530,7 +530,7 @@ const Dashboard: React.FC = () => {
             }
             className="modern-card-enter border-0"
             style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-            bodyStyle={{ flex: 1, overflow: 'auto', padding: '16px' }}
+            styles={{ body: { flex: 1, overflow: 'auto', padding: '16px' } }}
             loading={loading}
           >
             {dashboardData?.recent_exams && dashboardData.recent_exams.length > 0 ? (

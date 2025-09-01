@@ -48,6 +48,15 @@ apiClient.interceptors.response.use(
   }
 );
 
+// API响应类型定义
+interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+  errorCode?: string;
+}
+
 /**
  * AI代理API接口
  */
@@ -56,25 +65,25 @@ export const aiProxyApi = {
    * 创建AI分析会话
    */
   async createSession(data: {
-    student_id?: string;
+    participant_id?: string;
     exam_id?: string;
-  }) {
+  }): Promise<ApiResponse<{ session_id: string }>> {
     console.log('[AIProxy] 创建会话请求:', data);
     const response = await apiClient.post('/create_session', data);
     console.log('[AIProxy] 创建会话响应:', response);
-    return response;
+    return response as unknown as ApiResponse<{ session_id: string }>;
   },
 
   /**
    * 结束AI分析会话
    */
-  async endSession(sessionId: string) {
+  async endSession(sessionId: string): Promise<ApiResponse<any>> {
     console.log('[AIProxy] 结束会话请求:', sessionId);
     const response = await apiClient.post('/end_session', {
       session_id: sessionId
     });
     console.log('[AIProxy] 结束会话响应:', response);
-    return response;
+    return response as unknown as ApiResponse<any>;
   },
 
   /**
@@ -88,30 +97,30 @@ export const aiProxyApi = {
       start_time: string;
       end_time: string;
     }>;
-  }) {
+  }): Promise<ApiResponse<any>> {
     console.log('[AIProxy] 分析问题请求:', {
       session_id: data.session_id,
       questions_count: data.questions_data.length
     });
     const response = await apiClient.post('/analyze_questions', data);
     console.log('[AIProxy] 分析问题响应:', response);
-    return response;
+    return response as unknown as ApiResponse<any>;
   },
 
   /**
    * 健康检查
    */
-  async checkHealth() {
+  async checkHealth(): Promise<ApiResponse<{ status: string; service: string; url: string }>> {
     const response = await apiClient.get('/health');
-    return response;
+    return response as unknown as ApiResponse<{ status: string; service: string; url: string }>;
   },
 
   /**
    * 获取WebSocket配置
    */
-  async getConfig() {
+  async getConfig(): Promise<ApiResponse<{ websocketUrl: string; available: boolean }>> {
     const response = await apiClient.get('/config');
-    return response;
+    return response as unknown as ApiResponse<{ websocketUrl: string; available: boolean }>;
   }
 };
 

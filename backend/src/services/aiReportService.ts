@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 
+
 // AI服务请求格式（根据AIAPI.md）
 interface AIReportRequest {
   session_id: string;

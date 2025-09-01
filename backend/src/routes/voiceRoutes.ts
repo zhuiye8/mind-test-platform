@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import { llmService } from '../services/llmService';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('VoiceRoutes');
 
 const router = Router();
 
@@ -19,7 +22,7 @@ router.post('/match', async (req, res) => {
       return;
     }
 
-    console.log(`🎙️ 语音匹配请求 [${questionId}]: "${voiceText}"`);
+    logger.info(`语音匹配请求 [${questionId}]: "${voiceText}"`);
     
     // 调用LLM服务进行匹配
     const result = await llmService.matchVoiceAnswer(
@@ -28,7 +31,7 @@ router.post('/match', async (req, res) => {
       options
     );
     
-    console.log(`🎙️ 匹配结果 [${questionId}]:`, result);
+    logger.info(`匹配结果 [${questionId}]:`, result);
     
     // 返回结果
     res.json({
@@ -37,7 +40,7 @@ router.post('/match', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('语音匹配接口错误:', error);
+    logger.error('语音匹配接口错误', error);
     res.status(500).json({
       success: false,
       error: '语音匹配失败'
@@ -70,7 +73,7 @@ router.post('/prompt', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('生成语音提示失败:', error);
+    logger.error('生成语音提示失败', error);
     res.status(500).json({
       success: false,
       error: '生成提示失败'

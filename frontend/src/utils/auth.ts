@@ -18,7 +18,16 @@ export const setTeacherInfo = (teacher: any) => {
 
 export const getTeacherInfo = () => {
   const info = localStorage.getItem('teacher_info');
-  return info ? JSON.parse(info) : null;
+  if (!info) return null;
+  
+  try {
+    return JSON.parse(info);
+  } catch (error) {
+    console.error('解析教师信息失败，清除无效数据:', error);
+    // 清除损坏的数据
+    localStorage.removeItem('teacher_info');
+    return null;
+  }
 };
 
 export const isAuthenticated = (): boolean => {

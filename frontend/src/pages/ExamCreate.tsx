@@ -11,7 +11,7 @@ import {
   Button,
   Space,
   Typography,
-  message,
+  App,
   Divider,
 } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
@@ -23,6 +23,7 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 const ExamCreate: React.FC = () => {
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const { examId } = useParams<{ examId?: string }>();
@@ -66,25 +67,25 @@ const ExamCreate: React.FC = () => {
         setCurrentExam(exam);
 
         // 设置状态
-        const hasPassword = Boolean(exam.password);
-        const hasTimeLimit = Boolean(exam.start_time || exam.end_time);
+        const hasPassword = Boolean((exam as any).has_password);
+        const hasTimeLimit = Boolean((exam as any).start_time || (exam as any).end_time);
         setHasPassword(hasPassword);
         setHasTimeLimit(hasTimeLimit);
 
         // 预填充表单数据  
         const formData: any = {
-          paper_id: exam.paperId || (exam as any).paper_id,
+          // 使用后端统一的 snake_case 字段
+          paper_id: (exam as any).paper_id,
           title: exam.title,
-          duration_minutes: exam.durationMinutes || (exam as any).duration_minutes,
-          shuffle_questions: exam.shuffleQuestions || (exam as any).shuffle_questions,
+          duration_minutes: (exam as any).duration_minutes,
+          shuffle_questions: (exam as any).shuffle_questions,
+          allow_multiple_submissions: (exam as any).allow_multiple_submissions || false,
         };
 
-        if (hasPassword) {
-          formData.password = exam.password;
-        }
+        // 为避免泄露与哈希回显，不回填密码，仅根据 has_password 控制是否显示密码输入框
 
-        const startTime = exam.startTime || (exam as any).start_time;
-        const endTime = exam.endTime || (exam as any).end_time;
+        const startTime = (exam as any).start_time;
+        const endTime = (exam as any).end_time;
         if (hasTimeLimit && (startTime || endTime)) {
           const timeRange = [];
           if (startTime) timeRange.push(dayjs(startTime));
@@ -117,6 +118,7 @@ const ExamCreate: React.FC = () => {
         title: values.title.trim(),
         duration_minutes: values.duration_minutes,
         shuffle_questions: values.shuffle_questions || false,
+        allow_multiple_submissions: values.allow_multiple_submissions || false,
         password: hasPassword ? values.password?.trim() : undefined,
         start_time: hasTimeLimit && values.time_range?.[0]
           ? values.time_range[0].toISOString()
@@ -201,6 +203,7 @@ const ExamCreate: React.FC = () => {
           initialValues={{
             duration_minutes: 30,
             shuffle_questions: false,
+            allow_multiple_submissions: false,
           }}
         >
           {/* 基本信息 */}
@@ -279,6 +282,20 @@ const ExamCreate: React.FC = () => {
             />
             <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
               开启后，每个学生看到的题目顺序都不同
+            </Text>
+          </Form.Item>
+
+          <Form.Item
+            label="重复提交"
+            name="allow_multiple_submissions"
+            valuePropName="checked"
+          >
+            <Switch
+              checkedChildren="允许多次"
+              unCheckedChildren="仅限一次"
+            />
+            <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+              开启后，学生可以多次提交考试答案
             </Text>
           </Form.Item>
 

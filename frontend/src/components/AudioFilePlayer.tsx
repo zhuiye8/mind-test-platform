@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Button, Space, message } from 'antd';
+import { Button, Space, App } from 'antd';
 import {
   PlayCircleOutlined,
   PauseOutlined,
@@ -30,6 +30,7 @@ export interface AudioFilePlayerRef {
 }
 
 const AudioFilePlayer = forwardRef<AudioFilePlayerRef, AudioFilePlayerProps>((props, ref) => {
+  const { message } = App.useApp();
   const {
     audioUrl,
     audioStatus = 'none',

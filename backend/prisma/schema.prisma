@@ -19,6 +19,49 @@ enum ExamStatus {
   ARCHIVED   // 已归档 - 考试被归档到回收站
 }
 
+// AI会话状态枚举
+enum SessionStatus {
+  ACTIVE
+  ENDED
+  PENDING_FLUSH
+}
+
+// AI模型枚举
+enum AiModel {
+  FACE
+  ATTENTION
+  PPG
+  AUDIO
+  POSE
+  IDENTITY
+}
+
+// 异常严重程度枚举
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// 附件类型枚举
+enum AttachmentType {
+  THUMBNAIL
+  KEYFRAME
+  METRIC_DUMP
+  MEDIA_CLIP
+}
+
+// 学生作答行为事件类型枚举
+enum QuestionActionType {
+  DISPLAY   // 题目呈现
+  SELECT    // 选择（首次选择）
+  DESELECT  // 取消选择（多选题）
+  CHANGE    // 更改（单选/文本从A→B）
+  NAVIGATE  // 导航（从题X跳到题Y）
+  FOCUS     // 聚焦输入框
+  BLUR      // 离开输入框
+}
+
 // 教师表
 model Teacher {
   id           String   @id @default(uuid())
@@ -97,6 +140,7 @@ model Question {
   scale     Scale?             @relation(fields: [scaleId], references: [id], onDelete: SetNull)
   responses QuestionResponse[]
   audio     QuestionAudio?     // 一对一关系
+  actionEvents QuestionActionEvent[] // 一对多关系
 
   // 数据库索引优化
   @@index([paperId, questionOrder]) // 按试卷ID和题目顺序查询题目
@@ -118,6 +162,7 @@ model Exam {
   startTime            DateTime? @map("start_time")
   endTime              DateTime? @map("end_time")
   durationMinutes      Int       @map("duration_minutes")
+  allowMultipleSubmissions Boolean @default(false) @map("allow_multiple_submissions") // 是否允许多次提交
   status               ExamStatus @default(DRAFT)
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
@@ -126,6 +171,7 @@ model Exam {
   paper   Paper        @relation(fields: [paperId], references: [id], onDelete: Restrict)
   teacher Teacher      @relation(fields: [teacherId], references: [id], onDelete: Restrict)
   results ExamResult[]
+  aiSessions AiSession[]
 
   // 数据库索引优化
   @@index([teacherId, status, createdAt(sort: Desc)]) // 按教师ID、状态和创建时间查询考试列表
@@ -180,18 +226,17 @@ model ExamResult {
   startedAt              DateTime? @map("started_at")
   submittedAt            DateTime  @default(now()) @map("submitted_at")
 
-  // AI功能相关字段
-  aiSessionId            String?   @map("ai_session_id") // AI分析会话ID (http://192.168.9.84:5000)
-  emotionAnalysisId       String?   @map("emotion_analysis_id") // 情绪分析会话ID
-  timelineData           Json?     @map("timeline_data") // 时间线数据
-  voiceInteractions      Json?     @map("voice_interactions") // 语音交互数据
-  deviceTestResults      Json?     @map("device_test_results") // 设备测试结果
+  // AI功能相关字段（简化）
+  aiSessionId            String?   @map("ai_session_id") // AI分析会话ID（关联键）
   
   // 关系
-  exam              Exam               @relation(fields: [examId], references: [id], onDelete: Cascade)
+  exam              Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
   questionResponses QuestionResponse[]
-  emotionAnalysis   EmotionAnalysis?   // 一对一关系
-  aiReports         AIReport[]         // 一对多关系
+  emotionAnalysis   EmotionAnalysis?      // 一对一关系
+  aiReports         AIReport[]            // 一对多关系
+  interactionData   ExamInteractionData?  // 一对一关系
+  aiSessions        AiSession[]           // 一对多关系
+  actionEvents      QuestionActionEvent[] // 一对多关系
 
   // 数据库索引优化
   @@index([examId, submittedAt(sort: Desc)]) // 按考试ID和提交时间查询结果列表
@@ -200,7 +245,6 @@ model ExamResult {
   @@index([submittedAt(sort: Desc)]) // 按提交时间查询所有结果
   @@index([totalTimeSeconds]) // 按总用时查询（AI分析用）
   @@index([aiSessionId]) // AI会话查询优化
-  @@index([emotionAnalysisId]) // AI功能查询优化
 
   // 唯一约束：防止重复提交
   @@unique([examId, participantId])
@@ -304,4 +348,144 @@ model QuestionAudio {
   @@index([ttsTaskStatus, ttsTaskCreatedAt]) // 任务状态和创建时间查询
   @@index([ttsProvider, status]) // 按TTS提供商和状态查询
   @@map("question_audio")
+}
+
+// 考试交互数据表 - 存储前端生成的交互数据
+model ExamInteractionData {
+  id                String   @id @default(uuid())
+  examResultId      String   @unique @map("exam_result_id")
+  timelineData      Json?    @map("timeline_data") // 时间线数据
+  voiceInteractions Json?    @map("voice_interactions") // 语音交互数据
+  deviceTestResults Json?    @map("device_test_results") // 设备测试结果
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  
+  // 关系
+  examResult ExamResult @relation(fields: [examResultId], references: [id], onDelete: Cascade)
+  
+  // 索引优化
+  @@index([examResultId])
+  @@map("exam_interaction_data")
+}
+
+// AI会话表 - 核心会话管理
+model AiSession {
+  id               String        @id @default(uuid())
+  examId           String?
+  examResultId     String?
+  station_id       String?
+  room_id          String?
+  started_at       DateTime
+  ended_at         DateTime?
+  status           SessionStatus @default(ACTIVE)
+  ai_version       String?
+  retention_ttl_sec Int          @default(86400)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  exam             Exam?         @relation(fields: [examId], references: [id])
+  examResult       ExamResult?   @relation(fields: [examResultId], references: [id])
+  aggregates       AiAggregate[]
+  anomalies        AiAnomaly[]
+  checkpoints      AiCheckpoint[]
+  attachments      AiAttachment[]
+  idempotency      AiFinalizeIdemp[]
+
+  @@index([examId, started_at])
+  @@index([examResultId, started_at])
+  @@map("ai_sessions")
+}
+
+// AI聚合数据表
+model AiAggregate {
+  id          String   @id @default(uuid())
+  aiSessionId String
+  model       AiModel
+  key         String
+  value_json  Json     // JSONB
+  createdAt   DateTime @default(now())
+
+  session     AiSession @relation(fields: [aiSessionId], references: [id])
+
+  @@index([aiSessionId, model, key])
+  @@map("ai_aggregates")
+}
+
+// AI异常检测表
+model AiAnomaly {
+  id            String   @id @default(uuid())
+  aiSessionId   String
+  code          String
+  severity      Severity
+  from_ts       DateTime
+  to_ts         DateTime
+  evidence_json Json     // JSONB（缩略图/关键帧列表等）
+  createdAt     DateTime @default(now())
+
+  session       AiSession @relation(fields: [aiSessionId], references: [id])
+
+  @@index([aiSessionId, code, from_ts])
+  @@map("ai_anomalies")
+}
+
+// AI检查点表 - 时间序列快照
+model AiCheckpoint {
+  id            String   @id @default(uuid())
+  aiSessionId   String
+  timestamp     DateTime
+  snapshot_json Json     // JSONB（最近窗口指标）
+  createdAt     DateTime @default(now())
+
+  session       AiSession @relation(fields: [aiSessionId], references: [id])
+
+  @@unique([aiSessionId, timestamp])
+  @@map("ai_checkpoints")
+}
+
+// AI附件表
+model AiAttachment {
+  id          String   @id @default(uuid())
+  aiSessionId String
+  type        AttachmentType
+  path        String
+  sha256      String
+  size        Int
+  createdAt   DateTime @default(now())
+
+  session     AiSession @relation(fields: [aiSessionId], references: [id])
+
+  @@unique([sha256])
+  @@index([aiSessionId, type])
+  @@map("ai_attachments")
+}
+
+// AI最终化幂等表
+model AiFinalizeIdemp {
+  id               String   @id @default(uuid())
+  aiSessionId      String
+  idempotency_key  String
+  createdAt        DateTime @default(now())
+
+  session          AiSession @relation(fields: [aiSessionId], references: [id])
+
+  @@unique([aiSessionId, idempotency_key])
+  @@map("ai_finalize_idemp")
+}
+
+// 学生作答事件表（结构化时间线，用于还原"显示/选择/修改/回看"等行为）
+model QuestionActionEvent {
+  id              String   @id @default(uuid())
+  examResultId    String
+  questionId      String
+  event_type      QuestionActionType
+  payload_json    Json?    // { option_before, option_after, source: 'click|voice', from, to, ... }
+  occurred_at     DateTime // 事件发生时刻（ISO）
+  createdAt       DateTime @default(now())
+
+  examResult      ExamResult @relation(fields: [examResultId], references: [id])
+  question        Question   @relation(fields: [questionId], references: [id])
+
+  @@index([examResultId, occurred_at])
+  @@index([examResultId, questionId, occurred_at])
+  @@map("question_action_events")
 }

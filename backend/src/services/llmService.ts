@@ -1,4 +1,7 @@
 import OpenAI from 'openai';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('LLMService');
 
 interface VoiceMatchResult {
   matched: boolean;
@@ -20,10 +23,10 @@ export class LLMService {
         baseURL: "https://openrouter.ai/api/v1",
         apiKey: apiKey,
       });
-      console.log('✅ LLM服务已启用');
+      logger.info('LLM服务已启用');
     } else {
       this.client = null;
-      console.log('⚠️ LLM服务未启用 - 缺少OPENROUTER_API_KEY');
+      logger.warn('LLM服务未启用 - 缺少OPENROUTER_API_KEY');
     }
   }
 
@@ -85,7 +88,7 @@ export class LLMService {
       };
       
     } catch (error) {
-      console.error('LLM匹配失败:', error);
+      logger.error('LLM匹配失败', error);
       // 降级到模糊匹配
       return this.fallbackMatch(voiceText, options);
     }

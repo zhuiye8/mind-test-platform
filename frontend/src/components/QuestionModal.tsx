@@ -207,6 +207,7 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
       open={visible}
       onCancel={onCancel}
       width={700}
+      destroyOnClose={true}
       footer={[
         <Button key="cancel" onClick={onCancel}>
           取消

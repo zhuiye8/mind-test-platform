@@ -72,9 +72,11 @@ const FullScreenLoading: React.FC<FullScreenLoadingProps> = ({
           borderRadius: '16px',
           minHeight: '400px',
         }}
-        bodyStyle={{
-          padding: '40px',
-          textAlign: 'center',
+        styles={{
+          body: {
+            padding: '40px',
+            textAlign: 'center',
+          }
         }}
       >
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -120,7 +122,6 @@ const FullScreenLoading: React.FC<FullScreenLoadingProps> = ({
                 '100%': '#87d068',
               }}
               strokeWidth={12}
-              size="default"
               format={(percent) => `${percent}%`}
               style={{ marginBottom: '24px' }}
             />

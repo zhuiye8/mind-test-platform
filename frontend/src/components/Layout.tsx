@@ -11,6 +11,8 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  BugOutlined,
+  ExperimentOutlined as TestOutlined,
 } from '@ant-design/icons';
 import { removeAuthToken, getTeacherInfo } from '../utils/auth';
 import '../styles/layout.css';
@@ -38,6 +40,8 @@ const Layout: React.FC = () => {
       exams: '考试管理',
       analytics: '数据分析',
       monitor: '流媒体监测',
+      'monitor-v2': '流媒体监测V2',
+      'stream-test': '连接测试',
     };
     const firstTitle = firstMap[first] || '仪表板';
     items.push({ title: firstTitle });
@@ -86,11 +90,21 @@ const Layout: React.FC = () => {
       icon: <BarChartOutlined />,
       label: '数据分析',
     },
-    {
-      key: '/monitor',
-      icon: <MonitorOutlined />,
-      label: '流媒体监测',
-    },
+    // {
+    //   key: '/monitor',
+    //   icon: <MonitorOutlined />,
+    //   label: '流媒体监测',
+    // },
+    // {
+    //   key: '/monitor-v2',
+    //   icon: <MonitorOutlined />,
+    //   label: '流媒体监测V2',
+    // },
+    // {
+    //   key: '/stream-test',
+    //   icon: <BugOutlined />,
+    //   label: '连接测试',
+    // },
   ];
 
 
