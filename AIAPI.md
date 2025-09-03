@@ -8,8 +8,10 @@
 
 ## 服务器信息
 
-**服务器地址**: `http://192.168.0.204:5000`  
-**WebSocket地址**: `ws://192.168.0.204:5000/socket.io/`
+后端通过环境变量 `AI_SERVICE_URL` 指定外部AI服务地址，若未配置则默认使用本机地址。
+
+**服务器地址**: `http://localhost:5000`
+**WebSocket地址**: `ws://localhost:5000/socket.io/`
 
 
 
@@ -17,7 +19,7 @@
 
 ### 1. 创建检测会话
 
-**接口地址**: `POST http://192.168.0.204:5000/api/create_session`
+**接口地址**: `POST http://localhost:5000/api/create_session`
 
 **功能**: 开始数据采集，创建会话并返回session_id
 
@@ -40,7 +42,7 @@
 
 ### 2. 停止检测
 
-**接口地址**: `POST http://192.168.0.204:5000/api/end_session`
+**接口地址**: `POST http://localhost:5000/api/end_session`
 
 **功能**: 停止数据采集，准备接收题目数据
 
@@ -62,7 +64,7 @@
 
 ### 3. 生成心理分析报告
 
-**接口地址**: `POST http://192.168.0.204:5000/api/analyze_questions`
+**接口地址**: `POST http://localhost:5000/api/analyze_questions`
 
 **功能**: 提交题目数据，获取AI心理分析报告
 
@@ -98,7 +100,7 @@
 
 ```javascript
 // 步骤1: 创建检测会话
-const response1 = await fetch('http://192.168.0.204:5000/api/create_session', {
+const response1 = await fetch('http://localhost:5000/api/create_session', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -112,14 +114,14 @@ const sessionId = sessionData.session_id;
 // ... 进行考试，学生端发送视音频数据，系统在后台进行分析 ...
 
 // 步骤2: 停止检测
-await fetch('http://192.168.0.204:5000/api/end_session', {
+await fetch('http://localhost:5000/api/end_session', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ session_id: sessionId })
 });
 
 // 步骤3: 发送题目数据，获取分析报告
-const response3 = await fetch('http://192.168.0.204:5000/api/analyze_questions', {
+const response3 = await fetch('http://localhost:5000/api/analyze_questions', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -175,7 +177,7 @@ console.log(reportData.report); // 心理分析报告
 
 ### 连接WebSocket
 ```javascript
-const socket = io('http://192.168.0.204:5000');
+const socket = io('http://localhost:5000');
 
 // 连接成功
 socket.on('connect', () => {
@@ -206,7 +208,7 @@ socket.emit('audio_data', {
 
 在浏览器中访问以下地址测试连接：
 ```
-http://192.168.0.204:5000/api/health
+http://localhost:5000/api/health
 ```
 
 ## 常见问题

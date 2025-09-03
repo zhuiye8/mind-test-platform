@@ -18,7 +18,7 @@ export interface ProxyResult<T = any> {
   details?: any;
 }
 
-// AI服务配置
+// AI服务配置，未设置时默认连接本地服务
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5000';
 
 /**

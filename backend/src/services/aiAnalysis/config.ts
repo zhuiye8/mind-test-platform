@@ -3,8 +3,8 @@
  * AI分析服务配置
  */
 
-// AI服务配置 - 支持动态配置，不硬编码地址
-export const AI_SERVICE_BASE_URL = process.env.AI_SERVICE_URL || 'http://192.168.9.84:5000';
+// AI服务配置 - 若未显式设置，则使用本地地址
+export const AI_SERVICE_BASE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5000';
 
 // 默认超时配置
 export const DEFAULT_TIMEOUT = {
