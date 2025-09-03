@@ -5,7 +5,7 @@
 
 import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/response';
-import { aiAnalysisService } from '../services/aiAnalysisService';
+import { aiAnalysisService } from '../services/aiAnalysis';
 import prisma from '../utils/database';
 
 /**
@@ -265,11 +265,11 @@ export const getAIServiceConfig = async (_req: Request, res: Response): Promise<
 export const checkAIServiceHealth = async (_req: Request, res: Response): Promise<void> => {
   try {
     const isHealthy = await aiAnalysisService.checkHealth();
-    const serviceInfo = aiAnalysisService.getServiceInfo();
+    const serviceConfig = aiAnalysisService.getServiceConfig();
 
     sendSuccess(res, {
       healthy: isHealthy,
-      service: serviceInfo,
+      service: serviceConfig,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

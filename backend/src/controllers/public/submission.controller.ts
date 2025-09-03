@@ -7,7 +7,7 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../../utils/response';
 import { SubmitExamRequest, ExamStatus } from '../../types';
 import prisma from '../../utils/database';
-import { aiAnalysisService } from '../../services/aiAnalysisService';
+import { aiAnalysisService } from '../../services/aiAnalysis';
 import { calculateScore } from './utils';
 import { processTimelineData } from '../../services/timelineParserService';
 

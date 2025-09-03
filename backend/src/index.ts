@@ -138,7 +138,7 @@ const validateConfiguration = async (): Promise<void> => {
   console.log(`🤖 AI服务: ${aiServiceUrl}`);
   
   try {
-    const { aiAnalysisService } = await import('./services/aiAnalysisService');
+    const { aiAnalysisService } = await import('./services/aiAnalysis');
     const healthCheck = await aiAnalysisService.checkWebSocketHealth();
     
     if (healthCheck.available) {
