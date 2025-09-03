@@ -12,5 +12,5 @@ export {
   examApi,
   analyticsApi,
   publicApi,
-  teacherAiApi as aiApi
+  teacherAiApi
 } from './api/index';

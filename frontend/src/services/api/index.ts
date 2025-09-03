@@ -14,6 +14,3 @@ export { examApi } from './examApi';
 export { analyticsApi } from './analyticsApi';
 export { publicApi } from './publicApi';
 export { teacherAiApi } from './teacherAiApi';
-
-// 为了向后兼容，重新导出aiApi作为teacherAiApi的别名
-export { teacherAiApi as aiApi } from './teacherAiApi';
