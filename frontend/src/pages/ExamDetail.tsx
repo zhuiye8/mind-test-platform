@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Spin, Empty, message, Modal, Space, notification } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { examApi, aiApi } from '../services/api';
+import { examApi, teacherAiApi } from '../services/api';
 import type { Exam, ExamResult } from '../types';
 import type { ExamStatusType } from '../constants/examStatus';
 import ParticipantAnswerDetail from '../components/ParticipantAnswerDetail';
@@ -248,7 +248,7 @@ const ExamDetail: React.FC = () => {
 
       console.log(`[AI分析] 开始为考试结果 ${examResult.id} 生成AI报告`);
 
-      const response = await aiApi.generateReport(examResult.id);
+      const response = await teacherAiApi.generateReport(examResult.id);
 
       // 关闭进度提示
       if (progressModal) {
@@ -310,7 +310,7 @@ const ExamDetail: React.FC = () => {
   // 检查AI会话状态（暂时未使用，预留功能）
   // const checkAISessionStatus = async (examResultId: string): Promise<boolean> => {
   //   try {
-  //     const response = await aiApi.getReportStatus(examResultId);
+  //     const response = await teacherAiApi.getReportStatus(examResultId);
   //     if (response.success && response.data) {
   //       return response.data.hasAISession;
   //     }

@@ -18,7 +18,7 @@ import {
   EyeOutlined,
   SoundOutlined
 } from '@ant-design/icons';
-import { aiApi } from '../services/api';
+import { teacherAiApi } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -119,7 +119,7 @@ const AIReportViewer: React.FC<AIReportViewerProps> = ({
           setIsRegenerating(true);
           message.loading('正在重新生成AI分析报告...', 0);
           
-          const response = await aiApi.regenerateAIReport(examResultId);
+            const response = await teacherAiApi.regenerateAIReport(examResultId);
           
           if (response.success && response.data) {
             message.destroy();
@@ -150,7 +150,7 @@ const AIReportViewer: React.FC<AIReportViewerProps> = ({
       setLoadingEmotionData(true);
       setEmotionDataVisible(true);
       
-      const response = await aiApi.getEmotionDataPreview(examResultId);
+      const response = await teacherAiApi.getEmotionDataPreview(examResultId);
       
       if (response.success && response.data) {
         setEmotionData(response.data);
