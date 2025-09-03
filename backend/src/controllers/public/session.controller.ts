@@ -7,7 +7,7 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../../utils/response';
 import { ExamStatus } from '../../types';
 import prisma from '../../utils/database';
-import { aiAnalysisService } from '../../services/aiAnalysisService';
+import { aiAnalysisService } from '../../services/aiAnalysis';
 
 // 重试AI分析会话
 export const retryAISession = async (req: Request, res: Response): Promise<void> => {
