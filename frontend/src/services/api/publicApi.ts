@@ -89,6 +89,6 @@ export const publicApi = {
     error?: string;
     timestamp: string;
   }>> => {
-    return api.get('/ai/config');
+    return api.get('/ai-service/config');
   },
 };

@@ -156,7 +156,7 @@
 ## 6. 与后端交互（可靠交付）
 
 ### 6.1 后端接收接口（AI 服务主动调用）
-- 方法与路径：`POST {BACKEND}/api/ai/sessions/{session_id}/finalize`
+- 方法与路径：`POST {BACKEND}/api/ai-service/sessions/{session_id}/finalize`
 - 幂等：重复发送同一 `session_id` 返回 200 与已接收标识。
 - 交付内容：会话汇总、异常时间线、附件清单、版本信息与校验哈希。
 - 成功返回：`{ "ack": true, "session_id": "..." }`。
@@ -214,8 +214,8 @@
   - Socket.IO：用于信令与监控事件（详见《WEBRTC_SOCKETIO_DESIGN.md》）
 
 - 目标·对后端交付（规划中）：
-  - Finalize：`POST {BACKEND}/api/ai/sessions/{session_id}/finalize`
-  - Checkpoint：`POST {BACKEND}/api/ai/sessions/{session_id}/checkpoint`
+  - Finalize：`POST {BACKEND}/api/ai-service/sessions/{session_id}/finalize`
+  - Checkpoint：`POST {BACKEND}/api/ai-service/sessions/{session_id}/checkpoint`
 
 过渡建议：
 - 后端先实现 Finalize/Checkpoint 接口与 `AiSession/*` 数据模型（见《DB_SCHEMA.md》），AI 端在会话结束时对后端进行可靠交付并获得 ACK。
@@ -325,7 +325,7 @@
 ---
 
 ## 15. 与后端/前端的固定对齐项
-- 后端 finalize 接口：`POST /api/ai/sessions/{session_id}/finalize`（JWT 鉴权 + Idempotency-Key 头），返回 `{ack: true}`。
+- 后端 finalize 接口：`POST /api/ai-service/sessions/{session_id}/finalize`（JWT 鉴权 + Idempotency-Key 头），返回 `{ack: true}`。
 - 检查点存储：后端存储时间序列与异常摘要；使用按考试分区 + 时间压缩归档策略。
 - 证据保留：仅保留缩略图/关键帧，默认 TTL 24 小时；不保留原始音频。
 - 大屏路由：前端网关跳转到 AI 服务 `/monitor`，携带短期 Token。

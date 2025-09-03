@@ -10,7 +10,7 @@ import prisma from '../utils/database';
 
 /**
  * 生成AI分析报告
- * POST /api/ai/exam-results/:examResultId/generate-report
+ * POST /api/teacher/ai/exam-results/:examResultId/generate-report
  */
 export const generateAIReport = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -69,7 +69,7 @@ export const generateAIReport = async (req: Request, res: Response): Promise<voi
 
 /**
  * 获取AI报告状态
- * GET /api/ai/exam-results/:examResultId/report-status
+ * GET /api/teacher/ai/exam-results/:examResultId/report-status
  */
 export const getAIReportStatus = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -135,7 +135,7 @@ export const getAIReportStatus = async (req: Request, res: Response): Promise<vo
 
 /**
  * 手动结束AI分析会话
- * POST /api/ai/exam-results/:examResultId/end-session
+ * POST /api/teacher/ai/exam-results/:examResultId/end-session
  */
 export const endAISession = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -199,7 +199,7 @@ export const endAISession = async (req: Request, res: Response): Promise<void> =
 
 /**
  * 获取AI服务配置（供前端动态获取连接地址）
- * GET /api/ai/config
+ * GET /api/ai-service/config
  */
 export const getAIServiceConfig = async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -260,7 +260,7 @@ export const getAIServiceConfig = async (_req: Request, res: Response): Promise<
 
 /**
  * 检查AI服务健康状态
- * GET /api/ai/service/health
+ * GET /api/teacher/ai/service/health
  */
 export const checkAIServiceHealth = async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -280,7 +280,7 @@ export const checkAIServiceHealth = async (_req: Request, res: Response): Promis
 
 /**
  * 重新生成AI分析报告（强制覆盖）
- * POST /api/ai/exam-results/:examResultId/regenerate-report
+ * POST /api/teacher/ai/exam-results/:examResultId/regenerate-report
  */
 export const regenerateAIReport = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -348,7 +348,7 @@ export const regenerateAIReport = async (req: Request, res: Response): Promise<v
 
 /**
  * 获取情绪分析数据预览
- * GET /api/ai/exam-results/:examResultId/emotion-preview
+ * GET /api/teacher/ai/exam-results/:examResultId/emotion-preview
  */
 export const getEmotionDataPreview = async (req: Request, res: Response): Promise<void> => {
   try {

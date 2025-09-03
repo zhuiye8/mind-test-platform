@@ -15,8 +15,8 @@
 - 所有迁移与表结构变更均以该文档为准，不参考旧表。
 
 ## 3. 接口实现（按 AI_API_CONTRACT.md）
-- `POST /api/ai/sessions/:session_id/finalize`：幂等，返回 `{ack:true}`。落库到 `AiSession/*`。
-- `POST /api/ai/sessions/:session_id/checkpoint`：写入 `AiCheckpoint`；可按考试分区归档。
+- `POST /api/ai-service/sessions/:session_id/finalize`：幂等，返回 `{ack:true}`。落库到 `AiSession/*`。
+- `POST /api/ai-service/sessions/:session_id/checkpoint`：写入 `AiCheckpoint`；可按考试分区归档。
 - 鉴权：JWT + `Idempotency-Key`；按 `org_id` 预留多租户字段。
 
 建议实现细节（需与官方文档核对，无法访问则标注“待调研”）：

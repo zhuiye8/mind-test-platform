@@ -39,7 +39,6 @@
   - GET `/api/teacher/ai/exam-results/:exam_result_id/report-status`：报告状态
   - GET `/api/teacher/ai/exam-results/:exam_result_id/emotion-preview`：情绪数据预览（聚合）
   - GET `/api/teacher/ai/service/health`：AI 服务健康
-  - GET `/api/ai/config`：公开 AI 服务配置（学生端使用）
 
 - 学生·公开 API
   - GET `/api/public/exams/:public_uuid`：考试信息
@@ -55,11 +54,11 @@
   - POST `/api/audio/papers/:paper_id/batch-generate`：批量生成题目音频（教师）
   - GET `/api/audio/papers/:paper_id/status`：音频状态（教师）
   - 其他见 `routes/audioRoutes.ts`
-
-- AI 服务专用（已删除 - 使用 Finalize/Checkpoint 契约）
-  - 原有 `/api/ai-service/*` 端点已移除，统一使用 AI 代理服务
-  - AI 会话管理现在由后端统一处理，前端不再直接调用结束会话
-
+- AI 服务专用
+  - POST `/api/ai-service/sessions/:session_id/finalize`：会话结束回调
+  - POST `/api/ai-service/sessions/:session_id/checkpoint`：会话增量数据
+  - GET `/api/ai-service/sessions/:session_id`：调试端点
+  - GET `/api/ai-service/config`：公开 AI 服务配置（学生端使用）
 ## B. AI 服务 API（REST + 页面 + Socket.IO）
 
 - 现状·已实现

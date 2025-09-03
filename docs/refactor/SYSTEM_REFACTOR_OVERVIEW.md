@@ -31,8 +31,8 @@
   - 大屏页面：`GET /`（实时检测）、`GET /records`（历史记录）
   - Socket.IO 信令与监控事件：见《WEBRTC_SOCKETIO_DESIGN.md》
 - 目标·AI→后端（规划中）：
-  - Finalize：`POST /api/ai/sessions/{session_id}/finalize`（见《AI_API_CONTRACT.md》）
-  - Checkpoint：`POST /api/ai/sessions/{session_id}/checkpoint`
+  - Finalize：`POST /api/ai-service/sessions/{session_id}/finalize`（见《AI_API_CONTRACT.md》）
+  - Checkpoint：`POST /api/ai-service/sessions/{session_id}/checkpoint`
 
 ## 4. 文档清单（需逐步完善）
 - AI 服务重构方案：`AI_SERVICE_REFACTOR_GUIDE_V2.md`（基准）

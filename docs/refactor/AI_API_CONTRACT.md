@@ -7,7 +7,7 @@ AI 服务在结束会话和会话过程中与后端进行数据交付。本契�
 状态说明（开发阶段策略）：本契约为当前唯一实现目标。采用 Finalize/Checkpoint 作为 AI→后端交付的唯一通道；可删除/停用现状的兼容端点（`/api/create_session` 除外其用于学生会话创建，`/api/end_session` 仍由后端调用 AI 服务用于资源释放；`/api/analyze_questions` 不再用于后端报告生成）。
 
 ## 1. 结束会话交付（Finalize）
-- 方法与路径：`POST {BACKEND_BASE_URL}/api/ai/sessions/{session_id}/finalize`
+- 方法与路径：`POST {BACKEND_BASE_URL}/api/ai-service/sessions/{session_id}/finalize`
 - 鉴权：`Authorization: Bearer <jwt>` + `Idempotency-Key: <uuid>`
 - 幂等：同一 `session_id` + `Idempotency-Key` 重复请求返回 200 与 `ack: true`。
 
@@ -45,7 +45,7 @@ AI 服务在结束会话和会话过程中与后端进行数据交付。本契�
 ```
 
 ## 2. 增量检查点（Checkpoint）
-- 方法与路径：`POST {BACKEND_BASE_URL}/api/ai/sessions/{session_id}/checkpoint`
+- 方法与路径：`POST {BACKEND_BASE_URL}/api/ai-service/sessions/{session_id}/checkpoint`
 - 周期：60 秒一次，非强制，但在考试模式下启用。
 
 请求体（示例）：
