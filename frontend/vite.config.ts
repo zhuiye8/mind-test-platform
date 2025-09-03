@@ -33,7 +33,6 @@ export default defineConfig({
           // WebRTC相关代码单独打包
           'webrtc': [
             './src/services/localWebRTC/localWebRTCService.ts',
-            './src/hooks/useLocalStream.ts',
             './src/hooks/useDataChannel.ts'
           ],
           // 工具库
