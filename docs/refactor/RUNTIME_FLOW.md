@@ -51,7 +51,7 @@
 
 1) 开始阶段（创建会话后立即启动）
 - 前端调用：`POST /api/public/exams/:public_uuid/create-ai-session`，成功返回 `{ examResultId, aiSessionId }`。
-- 前端拉取 AI 配置：`GET /api/ai/config`（含 `websocketUrl`/特性开关）。
+- 前端拉取 AI 配置：`GET /api/ai-service/config`（含 `websocketUrl`/特性开关）。
 - 前端初始化本地媒体：`getUserMedia`（视频+音频），创建 `RTCPeerConnection`。
 - 握手：通过 Socket.IO 信令连接 `{VITE_AI_SERVICE_URL}`，发送 `signal.offer { session_id: aiSessionId, sdp }`，接收 `signal.answer` 与后续 `signal.ice` 交换（具体字段见《WEBRTC_SOCKETIO_DESIGN.md》）。
 - 连接建立后：
@@ -91,9 +91,9 @@
 
 ## 三、目标流程（Finalize/Checkpoint 上线后）
 1) 学生端创建会话后，AI 服务周期性发送 Checkpoint：
-- `POST {BACKEND}/api/ai/sessions/{session_id}/checkpoint`（60s 一次）
+- `POST {BACKEND}/api/ai-service/sessions/{session_id}/checkpoint`（60s 一次）
 2) 学生提交或超时，AI 服务聚合并 Finalize：
-- `POST {BACKEND}/api/ai/sessions/{session_id}/finalize` → 后端返回 `ack:true`
+- `POST {BACKEND}/api/ai-service/sessions/{session_id}/finalize` → 后端返回 `ack:true`
 3) 后端统一基于 `AiSession/*` 模型持久化：
 - 聚合（`AiAggregate`）、异常（`AiAnomaly`）、时间点（`AiCheckpoint`）、附件（`AiAttachment`）
 4) 教师端生成报告：
@@ -103,7 +103,7 @@
 ## 四、异常与降级
 - AI 服务不可达：
   - 学生端可退化为仅提交答案；报告稍后生成
-  - 教师端大屏按钮禁用或提示“服务不可达”；`/api/ai/config` 返回 available=false
+  - 教师端大屏按钮禁用或提示“服务不可达”；`/api/ai-service/config` 返回 available=false
 - WebRTC 不可用：
   - 仅使用 Socket.IO 推送指标（若实现）；或只展示历史记录
 

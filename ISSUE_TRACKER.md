@@ -80,7 +80,7 @@
 
 11) AI 配置端点与降级体验不一致
 - 问题：
-  - 存在 `/api/ai/config` 与 `/api/ai-proxy/config` 两个配置端点（功能重叠）。
+  - 存在 `/api/ai-service/config` 与 `/api/ai-proxy/config` 两个配置端点（功能重叠）。
   - 学生端对 AI 不可用的 UI 提示不明显（多在 console）。
 - 位置：
   - 后端：`backend/src/routes/aiRoutes.ts`、`backend/src/routes/aiProxyRoutes.ts`
