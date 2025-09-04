@@ -58,8 +58,8 @@ docker-compose -p psychology-test-platform up -d
 ## 🏗️ 技术架构
 
 ### 前端技术栈
-- **Next.js 15** + React 19 + TypeScript
-- **Tailwind CSS** + shadcn/ui 组件库
+- **React 19** + Vite + TypeScript
+- **Ant Design** 组件库
 - **响应式设计** + 移动端优化
 
 ### 后端技术栈  
@@ -156,7 +156,7 @@ npm run db:studio
 
 ```
 心理测试平台/
-├── frontend/          # Next.js前端应用
+├── frontend/          # React + Vite 前端应用
 ├── backend/           # Node.js后端服务
 ├── nginx/             # Nginx配置
 ├── docker-compose.yml # Docker编排配置
