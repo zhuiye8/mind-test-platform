@@ -48,7 +48,7 @@ const PaperModal: React.FC<Props> = ({ open, editingPaper, onCancel, onSubmit })
       footer={null}
       width={680}
       className="modern-modal"
-      destroyOnClose={true}
+      destroyOnHidden={true}
     >
       <Divider className="my-6" />
       <Form form={form} layout="vertical" onFinish={handleFinish} autoComplete="off">

@@ -7,7 +7,6 @@ import {
 } from '@ant-design/icons';
 import type { Question } from '../../types';
 import type { TimelineRecorder } from '../../utils/timelineRecorder';
-import VoiceInteraction from '../VoiceInteraction';
 import AudioFilePlayer from '../AudioFilePlayer';
 import { questionTypeColors, createOptionStyle, cardStyles } from './ParticipantExam.styles';
 
@@ -21,7 +20,6 @@ interface QuestionRendererProps {
   answer: any;
   onAnswerChange: (questionId: string, value: any) => void;
   showAudioPlayer?: boolean;
-  showVoiceInteraction?: boolean;
   disabled?: boolean;
   className?: string;
   timelineRecorder?: TimelineRecorder;
@@ -34,7 +32,6 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
   answer,
   onAnswerChange,
   showAudioPlayer = true,
-  showVoiceInteraction = true,
   disabled = false,
   className = '',
   timelineRecorder
@@ -285,14 +282,6 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
           {question.title}
         </div>
 
-        {/* 题目描述 */}
-        {question.description && (
-          <div className="mb-4">
-            <Paragraph className="text-gray-600 text-base">
-              {question.description}
-            </Paragraph>
-          </div>
-        )}
       </div>
 
       <Divider />
@@ -309,47 +298,16 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
         </div>
       </div>
 
-      {/* 音频播放和语音交互 */}
-      {(showAudioPlayer || showVoiceInteraction) && (
+      {/* 音频播放 */}
+      {showAudioPlayer && (
         <>
           <Divider />
           <div className="bg-gray-50 p-4 rounded-lg">
-            <Text strong className="block mb-3">智能辅助功能</Text>
-            <Space direction="vertical" size="middle" className="w-full">
-              {/* 音频播放器 */}
-              {showAudioPlayer && (
-                <div>
-                  <Text type="secondary" className="block mb-2">题目语音播报</Text>
-                  <AudioFilePlayer
-                    questionText={question.title}
-                    options={question.options}
-                    questionType={question.question_type}
-                  />
-                </div>
-              )}
-
-              {/* 语音交互 */}
-              {showVoiceInteraction && question.question_type !== 'text' && (
-                <div>
-                  <Text type="secondary" className="block mb-2">语音答题</Text>
-                  <VoiceInteraction
-                    questionText={question.title}
-                    questionOptions={question.options}
-                    onVoiceAnswer={(voiceAnswer) => {
-                      // 语音答题，使用voice来源标记
-                      const previousAnswer = answer;
-                      if (previousAnswer === undefined || previousAnswer === null || previousAnswer === '') {
-                        timelineRecorder?.recordOptionSelect(question.id, voiceAnswer, 'voice');
-                      } else {
-                        timelineRecorder?.recordOptionChange(question.id, String(previousAnswer), voiceAnswer, 'voice');
-                      }
-                      handleAnswerChange(voiceAnswer);
-                    }}
-                    disabled={disabled}
-                  />
-                </div>
-              )}
-            </Space>
+            <Text strong className="block mb-3">题目语音播报</Text>
+            <AudioFilePlayer
+              questionId={question.id}
+              onTimelineEvent={timelineRecorder?.recordTimelineEvent}
+            />
           </div>
         </>
       )}

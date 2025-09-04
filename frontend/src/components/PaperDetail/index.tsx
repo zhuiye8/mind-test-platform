@@ -2,10 +2,10 @@
  * PaperDetail - 试卷详情页面主组件（重构版）
  * 从733行拆分为模块化组件，提升可维护性
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Button, Space, message, Modal, Spin, Tabs } from 'antd';
-import { PlusOutlined, SoundOutlined, ExperimentOutlined } from '@ant-design/icons';
+import { PlusOutlined, SoundOutlined, ExperimentOutlined, CalculatorOutlined } from '@ant-design/icons';
 
 // 拆分后的子组件
 import PaperHeader from './PaperHeader';
@@ -16,12 +16,16 @@ import { usePaperDetail } from './usePaperDetail';
 // 保持对原有组件的引用
 import QuestionModal from '../QuestionModal';
 import AudioManagementPanel from '../AudioManagementPanel';
+import BatchScoringModal from './BatchScoringModal';
 
 // 使用 items API，避免 TabPane 弃用告警
 
 const PaperDetail: React.FC = () => {
   const { paperId } = useParams<{ paperId: string }>();
   const navigate = useNavigate();
+  
+  // 批量计分模态框状态
+  const [batchScoringVisible, setBatchScoringVisible] = useState(false);
 
   // 使用自定义Hook管理状态和逻辑
   const {
@@ -54,6 +58,16 @@ const PaperDetail: React.FC = () => {
   const handleAudioGenerate = (questionId: string) => {
     // 这里可以触发音频生成逻辑
     message.info(`为题目 ${questionId} 生成语音...`);
+  };
+
+  // 批量计分处理
+  const handleBatchScoring = () => {
+    setBatchScoringVisible(true);
+  };
+
+  // 批量计分完成回调
+  const handleBatchScoringSuccess = () => {
+    refreshQuestions(); // 刷新题目列表
   };
 
   if (!paperId) {
@@ -91,6 +105,9 @@ const PaperDetail: React.FC = () => {
                       <Space>
                         <Button type="primary" icon={<PlusOutlined />} onClick={handleAddQuestion}>
                           添加题目
+                        </Button>
+                        <Button icon={<CalculatorOutlined />} onClick={handleBatchScoring}>
+                          批量设置计分
                         </Button>
                         <Button icon={<SoundOutlined />} onClick={() => message.info('批量音频生成功能开发中...')}>
                           批量生成语音
@@ -139,6 +156,15 @@ const PaperDetail: React.FC = () => {
           question={editingQuestion}
           onCancel={handleModalCancel}
           onSubmit={handleModalSubmit}
+        />
+
+        {/* 批量计分模态框 */}
+        <BatchScoringModal
+          visible={batchScoringVisible}
+          onCancel={() => setBatchScoringVisible(false)}
+          paperId={paperId}
+          paperTitle={paper?.title}
+          onSuccess={handleBatchScoringSuccess}
         />
       </Spin>
     </div>

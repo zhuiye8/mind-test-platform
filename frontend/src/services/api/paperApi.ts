@@ -34,4 +34,40 @@ export const paperApi = {
   delete: (paperId: string): Promise<ApiResponse<void>> => {
     return api.delete(`/teacher/papers/${paperId}`);
   },
+
+  // 批量设置计分
+  batchSetScoring: (paperId: string, data: {
+    mode: 'disable_all' | 'auto_fill',
+    config?: {
+      order: 'asc' | 'desc',
+      initialScore: number,
+      step: number
+    }
+  }): Promise<ApiResponse<{
+    message: string,
+    mode: string,
+    updated_questions: number,
+    total_questions: number,
+    paper_title: string
+  }>> => {
+    return api.post(`/teacher/papers/${paperId}/batch-scoring`, data);
+  },
+
+  // 预览批量计分
+  previewBatchScoring: (paperId: string, data: {
+    mode: 'disable_all' | 'auto_fill',
+    config?: {
+      order: 'asc' | 'desc',
+      initialScore: number,
+      step: number
+    }
+  }): Promise<ApiResponse<{
+    mode: string,
+    config?: any,
+    paperTitle: string,
+    totalQuestions: number,
+    previewResults: any[]
+  }>> => {
+    return api.post(`/teacher/papers/${paperId}/batch-scoring/preview`, data);
+  },
 };

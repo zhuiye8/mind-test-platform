@@ -88,3 +88,10 @@ temp/
 *.pyc
 
 emotion/*
+
+# AI服务相关文件（暂时不检测）
+emotion_gpt5/
+AI_*.md
+*_AI_*.md
+ai_*.py
+*_ai_*.py

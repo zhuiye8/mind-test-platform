@@ -4,7 +4,7 @@
 // This is a critical part of the V2.0 refactoring to ensure data consistency.
 // The backend service logic uses camelCase, while the database and API use snake_case.
 
-const isObject = (o: any): o is Object => o === Object(o) && !Array.isArray(o) && typeof o !== 'function';
+const isObject = (o: any): o is Object => o === Object(o) && !Array.isArray(o) && typeof o !== 'function' && !(o instanceof Date);
 
 const toCamel = (s: string): string => {
   return s.replace(/([-_][a-z])/ig, ($1) => {
@@ -15,6 +15,10 @@ const toCamel = (s: string): string => {
 };
 
 const toSnake = (s: string): string => {
+  // 特殊处理：单个大写字母（选项键）不转换
+  if (/^[A-Z]$/.test(s)) {
+    return s;
+  }
   return s.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Space, Typography, Card, Modal, Input, message, Row, Col, Empty, Skeleton } from 'antd';
+import { Button, Space, Typography, Card, Modal, Input, App, Row, Col, Empty, Skeleton } from 'antd';
 import {
   PlusOutlined,
   ExclamationCircleOutlined,
@@ -27,6 +27,7 @@ const PaperList: React.FC = () => {
   const [searchValue, setSearchValue] = useState('');
   const navigate = useNavigate();
   const [modal, contextHolder] = Modal.useModal();
+  const { message } = App.useApp();
 
   useEffect(() => {
     loadPapers();
@@ -89,7 +90,6 @@ const PaperList: React.FC = () => {
         }
       }
       setModalVisible(false);
-      form.resetFields();
       setEditingPaper(null);
     } catch (error) {
       console.error('操作失败:', error);

@@ -83,3 +83,43 @@ AI 服务在结束会话和会话过程中与后端进行数据交付。本契�
 说明：Finalize/Checkpoint 仅承载“AI 推理侧”数据（聚合/异常/快照/附件），不承载学生作答明细；作答明细由学生端提交的 `timeline_data` 在后端解析入库（见《BACKEND_REFACTOR_GUIDE.md》《DB_SCHEMA.md》）。
 
 series 映射：Finalize 的 `series` 将批量写入 `AiCheckpoint`（`timestamp`→记录时间，`snapshot_json`→metrics，按 `aiSessionId+timestamp` 去重）。
+
+
+---
+
+## 附录·监控事件（不改变 AI→后端 HTTP 契约，仅用于前端实时渲染与日志）
+
+1) 事件与路径
+- Socket.IO 路径：`/socket.io`
+- 事件：
+  - `session.heartbeat`（前端→AI，频率 1s）：`{ session_id, ts, request_id? }`
+  - `monitor.update` v0.2（AI→前端，频率 1s）：
+    ```
+    {
+      version: "0.2",
+      session_id: "s-uuid",
+      timestamp: "2025-01-01T08:00:00.123Z",
+      latency_ms: 35,
+      metrics: { fps: 12, audio_level: 0.18, hr_bpm: 76, attention_score: 0.82 },
+      models: {
+        face: { status: "active", emotion_top1: "neutral", distribution: { neutral: 0.72, happy: 0.12 } },
+        audio: { speaking: false, emotion_top1: "neutral", distribution: { neutral: 0.69, angry: 0.08 } }
+      },
+      anomalies: [ { code: "LOOK_AWAY", severity: "medium", duration_ms: 800 } ],
+      system: { cpu_util: 0.36, gpu_util: 0.41, dropped_frames: 2 },
+      request_id: "..." // 可选，仅用于日志；优先事件 payload，回落连接 query
+    }
+    ```
+- 约束：
+  - 字段命名 snake_case；时间戳 ISO8601（UTC，含毫秒）。
+  - 心跳改为 1s；断线重连后自动恢复心跳与订阅。
+  - 日志采样：每会话每 5 次心跳打印一次 monitor.update.sent（结构化）。
+  - hr_bpm：会话开始后的 3 秒预热期内可为 null，预热期后必须为数值并以 1s 频率更新。
+  - request_id 透传：优先事件 payload，回落连接 query（仅日志用）。
+  - 不涉及 AI→后端交互；最终以后端数据为准。
+
+2) 本地缓存说明（AI 端非权威）
+- 路径：`storage/sessions/<session_id>/monitor.jsonl`（逐条快照新增行）
+- 路径：`storage/sessions/<session_id>/summary.json`（聚合导出）
+- 标注："非权威缓存，以后端为准"；受环境变量 `RETENTION_TTL` 管理，过期清理。
+- 用途：用于断线恢复与 UI 回放；联调时辅助排障。

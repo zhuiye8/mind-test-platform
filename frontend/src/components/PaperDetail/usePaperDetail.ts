@@ -15,8 +15,8 @@ export const usePaperDetail = (paperId: string): UsePaperDetailReturn => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
-  // 获取试卷详情
-  const refreshPaper = useCallback(async () => {
+  // 获取试卷详情和题目列表（合并为一个请求）
+  const refreshPaperAndQuestions = useCallback(async () => {
     if (!paperId) return;
     
     try {
@@ -24,7 +24,12 @@ export const usePaperDetail = (paperId: string): UsePaperDetailReturn => {
       const response = await paperApi.getPaper(paperId);
       
       if (response.success && response.data) {
-        setPaper(response.data);
+        const paperData = response.data;
+        setPaper(paperData);
+        // getPaper已经包含了questions数据，避免重复请求
+        if (paperData.questions) {
+          setQuestions(paperData.questions);
+        }
       } else {
         message.error('获取试卷详情失败');
       }
@@ -36,12 +41,11 @@ export const usePaperDetail = (paperId: string): UsePaperDetailReturn => {
     }
   }, [paperId]);
 
-  // 获取题目列表
+  // 单独获取题目列表（用于更新操作后刷新）
   const refreshQuestions = useCallback(async () => {
     if (!paperId) return;
     
     try {
-      setLoading(true);
       const response = await questionApi.getQuestions(paperId);
       
       if (response.success && response.data) {
@@ -52,18 +56,20 @@ export const usePaperDetail = (paperId: string): UsePaperDetailReturn => {
     } catch (error) {
       console.error('获取题目列表失败:', error);
       message.error('获取题目列表失败');
-    } finally {
-      setLoading(false);
     }
   }, [paperId]);
+
+  // 保持向后兼容的refreshPaper方法
+  const refreshPaper = useCallback(async () => {
+    await refreshPaperAndQuestions();
+  }, [refreshPaperAndQuestions]);
 
   // 初始化数据
   useEffect(() => {
     if (paperId) {
-      refreshPaper();
-      refreshQuestions();
+      refreshPaperAndQuestions();
     }
-  }, [paperId, refreshPaper, refreshQuestions]);
+  }, [paperId, refreshPaperAndQuestions]);
 
   // 新增题目
   const handleAddQuestion = useCallback(() => {
@@ -94,6 +100,13 @@ export const usePaperDetail = (paperId: string): UsePaperDetailReturn => {
     }
   }, [refreshQuestions]);
 
+  // 计算下一个可用的题目顺序
+  const getNextQuestionOrder = useCallback((): number => {
+    if (questions.length === 0) return 1;
+    const maxOrder = Math.max(...questions.map(q => q.question_order || 0));
+    return maxOrder + 1;
+  }, [questions]);
+
   // 复制题目
   const handleDuplicateQuestion = useCallback(async (question: Question) => {
     try {
@@ -101,7 +114,7 @@ export const usePaperDetail = (paperId: string): UsePaperDetailReturn => {
         title: `${question.title}（副本）`,
         question_type: question.question_type,
         options: question.options || {},
-        question_order: questions.length + 1,
+        question_order: getNextQuestionOrder(),
         is_required: question.is_required,
         is_scored: question.is_scored,
       };
@@ -118,7 +131,7 @@ export const usePaperDetail = (paperId: string): UsePaperDetailReturn => {
       console.error('题目复制失败:', error);
       message.error('题目复制失败');
     }
-  }, [paperId, questions.length, refreshQuestions]);
+  }, [paperId, getNextQuestionOrder, refreshQuestions]);
 
   // 模态框提交
   const handleModalSubmit = useCallback(async (data: CreateQuestionForm) => {
@@ -129,8 +142,39 @@ export const usePaperDetail = (paperId: string): UsePaperDetailReturn => {
         // 编辑模式
         response = await questionApi.updateQuestion(editingQuestion.id, data);
       } else {
-        // 新增模式
-        response = await questionApi.createQuestion(paperId!, data);
+        // 新增模式：先获取最新题目列表，再计算顺序号
+        console.log('🔍 Getting fresh questions for order calculation...');
+        try {
+          const questionsResponse = await questionApi.getQuestions(paperId!);
+          let currentQuestions = questions; // 默认使用当前状态
+          
+          if (questionsResponse.success && questionsResponse.data) {
+            currentQuestions = questionsResponse.data;
+            console.log('🔍 Fresh questions loaded:', currentQuestions.length);
+          }
+          
+          const nextOrder = currentQuestions.length === 0 ? 1 : 
+            Math.max(...currentQuestions.map(q => q.question_order || 0)) + 1;
+            
+          const newData = {
+            ...data,
+            question_order: nextOrder
+          };
+          console.log('🔍 Creating question with calculated order:', nextOrder);
+          console.log('🔍 Based on questions count:', currentQuestions.length);
+          console.log('🔍 Existing orders:', currentQuestions.map(q => q.question_order).sort((a, b) => a - b));
+          
+          response = await questionApi.createQuestion(paperId!, newData);
+        } catch (orderError) {
+          console.error('🔍 Failed to get fresh questions, using fallback:', orderError);
+          // 失败时使用当前状态计算
+          const nextOrder = getNextQuestionOrder();
+          const newData = {
+            ...data,
+            question_order: nextOrder
+          };
+          response = await questionApi.createQuestion(paperId!, newData);
+        }
       }
       
       if (response.success) {

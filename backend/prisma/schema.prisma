@@ -131,7 +131,8 @@ model Question {
   questionType     String   @default("single_choice") @map("question_type")
   displayCondition Json?    @map("display_condition") // PostgreSQL JSONB字段
   scoreValue       Int?     @map("score_value") // 题目基础分值
-  isScored         Boolean  @default(true) @map("is_scored") // 是否计分（排除填充题）
+  isRequired       Boolean  @default(true) @map("is_required") // 是否必填
+  isScored         Boolean  @default(false) @map("is_scored") // 是否计分（排除填充题）
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

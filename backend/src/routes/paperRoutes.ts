@@ -27,6 +27,9 @@ import {
   batchSetConditionLogic,
   exportConditionLogicConfig,
   importConditionLogicConfig,
+  // 计分管理API
+  batchSetScoring,
+  previewBatchScoring,
 } from '../controllers/question';
 import { authenticateToken } from '../middleware/auth';
 
@@ -69,5 +72,9 @@ router.post('/:paperId/condition-preview', previewConditionLogic);              
 router.put('/conditions/batch-set', batchSetConditionLogic);                           // 批量设置条件逻辑
 router.get('/:paperId/conditions/export', exportConditionLogicConfig);                // 导出条件逻辑配置
 router.post('/:paperId/conditions/import', importConditionLogicConfig);               // 导入条件逻辑配置
+
+// 计分管理路由
+router.post('/:paperId/batch-scoring', batchSetScoring);                              // 批量设置计分
+router.post('/:paperId/batch-scoring/preview', previewBatchScoring);                  // 预览批量计分
 
 export default router;

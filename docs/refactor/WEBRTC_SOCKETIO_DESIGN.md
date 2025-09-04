@@ -27,28 +27,38 @@
 - ICE 策略固定为 host-only；不配置 STUN/TURN；禁止公网回落；目标浏览器：Chrome/Edge（Windows/macOS/Linux）。
 - 会话状态在服务端维护，断线自动重连并恢复最近 10 秒快照。
 
- 
+
 
 ## 3. 监控事件（Socket.IO）
-- `monitor.update`（服务→前端，250–500ms 节流）
+- `monitor.update` v0.2（服务→前端，1s 采样/推送；UI 可做平滑动画）
 ```
 {
+  version: "0.2",
   session_id: "s-uuid",
   timestamp: "2025-01-01T08:00:00.123Z",
-  models: ["face","attention","ppg","audio"],
-  metrics: {
-    attention: { score: 0.82, confidence: 0.91 },
-    face: { detected: true, multi_face_secs: 0, occlusion_ratio: 0.02 },
-    ppg: { hr_bpm: 76, signal_quality: 0.88 },
-    audio: { dominant: "neutral", confidence: 0.71 }
+  latency_ms: 35,
+  metrics: { fps: 12, audio_level: 0.18, hr_bpm: 76, attention_score: 0.82 },
+  models: {
+    face: { status: "active", emotion_top1: "neutral", distribution: { neutral: 0.72, happy: 0.12 } },
+    audio: { speaking: false, emotion_top1: "neutral", distribution: { neutral: 0.69, angry: 0.08 } }
   },
   anomalies: [ { code: "LOOK_AWAY", severity: "medium", duration_ms: 800 } ],
-  latency_ms: 35,
-  system: { gpu_util: 0.41, cpu_util: 0.36, dropped_frames: 2 }
+  system: { cpu_util: 0.36, gpu_util: 0.41, dropped_frames: 2 },
+  request_id: "..." // 可选，仅用于日志；优先事件 payload，回落连接 query
 }
 ```
+说明：
+- 心率（hr_bpm）在会话开始后的 3 秒预热期内可为 null（数据采集中），预热期结束后必须为数值（不可缺失或为 null），并以 1s 频率更新。
+- 断线重连：客户端自动重连后应恢复 1s 心跳与 monitor.update 订阅，无需手动刷新。
 
-- `session.heartbeat`（前端→服务，每 2s）: `{ session_id, ts }`
+- 约束：
+  - 字段命名 snake_case；时间戳 ISO8601（UTC，含毫秒）。
+  - 心跳改为 1s；断线重连后自动恢复心跳与订阅。
+  - 日志采样：每会话每 5 次心跳打印一次 monitor.update.sent（结构化）。
+  - request_id 透传：优先事件 payload，回落连接 query（仅日志用）。
+  - 不涉及 AI→后端交互；最终以后端数据为准。
+
+- `session.heartbeat`（前端→服务，每 1s）: `{ session_id, ts, request_id? }`
 
 ## 4. WebRTC 策略
 - 视频：H.264/VP8 均可；帧率<= 15fps，分辨率<= 640x480（按硬件能力自适应）。具体编解码首选顺序与码率控制需对照浏览器与 aiortc 的最新官方建议再行确认（待调研）。

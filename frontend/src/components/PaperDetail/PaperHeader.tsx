@@ -63,23 +63,12 @@ const PaperHeader: React.FC<PaperHeaderProps> = ({
               返回试卷列表
             </Button>
           </Space>
-          
-          <Space>
-            <Button 
-              type="primary"
-              icon={<EditOutlined />}
-              onClick={() => onUpdate(paper)}
-            >
-              编辑试卷信息
-            </Button>
-          </Space>
         </div>
 
         <div>
           <Title level={2} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
             <FileTextOutlined />
             {paper.title}
-            {getStatusTag(paper.status)}
           </Title>
 
           {paper.description && (
@@ -91,20 +80,13 @@ const PaperHeader: React.FC<PaperHeaderProps> = ({
           <Space size="large" wrap>
             <Text type="secondary">
               <strong>创建时间：</strong>
-              {formatDate(paper.createdAt)}
+              {formatDate(paper.created_at)}
             </Text>
             
             <Text type="secondary">
               <strong>最后更新：</strong>
-              {formatDate(paper.updatedAt)}
+              {formatDate(paper.updated_at)}
             </Text>
-            
-            {paper.status === 'published' && paper.publishedAt && (
-              <Text type="secondary">
-                <strong>发布时间：</strong>
-                {formatDate(paper.publishedAt)}
-              </Text>
-            )}
           </Space>
         </div>
       </Space>

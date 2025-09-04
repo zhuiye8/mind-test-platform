@@ -134,11 +134,11 @@ async function main(): Promise<void> {
   ];
 
   const asqOptions = {
-    "1": "完全不压力／与我无关",
-    "2": "稍微有点压力", 
-    "3": "中等压力",
-    "4": "比较大压力",
-    "5": "非常大压力"
+    "A": { text: "完全不压力／与我无关", score: 1 },
+    "B": { text: "稍微有点压力", score: 2 },
+    "C": { text: "中等压力", score: 3 },
+    "D": { text: "比较大压力", score: 4 },
+    "E": { text: "非常大压力", score: 5 }
   };
 
   const asqQuestionIds = [];
@@ -152,7 +152,8 @@ async function main(): Promise<void> {
         options: asqOptions,
         questionType: 'single_choice',
         scoreValue: null, // ASQ题目分数由选项值决定
-        isScored: true,
+        isRequired: true, // ASQ量表题目全部必填
+        isScored: true, // ASQ是计分量表
         displayCondition: Prisma.DbNull,
       },
     });
@@ -197,9 +198,9 @@ async function main(): Promise<void> {
   ];
 
   const scaredOptions = {
-    "0": "完全不符合或几乎不符合",
-    "1": "有点符合或有时符合",
-    "2": "非常符合或经常符合"
+    "A": { text: "完全不符合或几乎不符合", score: 0 },
+    "B": { text: "有点符合或有时符合", score: 1 },
+    "C": { text: "非常符合或经常符合", score: 2 }
   };
 
   const scaredQuestionIds = [];
@@ -213,7 +214,8 @@ async function main(): Promise<void> {
         options: scaredOptions,
         questionType: 'single_choice',
         scoreValue: null, // 分数由选项值决定
-        isScored: true,
+        isRequired: true, // SCARED量表题目全部必填
+        isScored: true, // SCARED是计分量表
         displayCondition: Prisma.DbNull,
       },
     });
@@ -313,10 +315,10 @@ async function main(): Promise<void> {
   ];
 
   const scasOptions = {
-    "0": "从不",
-    "1": "有时",
-    "2": "经常",
-    "3": "总是"
+    "A": { text: "从不", score: 0 },
+    "B": { text: "有时", score: 1 },
+    "C": { text: "经常", score: 2 },
+    "D": { text: "总是", score: 3 }
   };
 
   const scasQuestionIds = [];
@@ -330,6 +332,7 @@ async function main(): Promise<void> {
         options: scasOptions,
         questionType: 'single_choice',
         scoreValue: null, // 分数由选项值决定
+        isRequired: questionData.isScored, // SCAS填充题设为选填，计分题必填
         isScored: questionData.isScored,
         displayCondition: Prisma.DbNull,
       },
@@ -583,15 +586,197 @@ async function main(): Promise<void> {
   console.log(`   - 时间线事件: 5个行为事件`);
   console.log(`   - AI数据: 聚合指标 + 异常记录 + 检查点`);
 
+  // 4. 创建临时测试题库 (12题，快速测试用)
+  const testPaper = await prisma.paper.create({
+    data: {
+      title: '临时测试题库',
+      description: '包含12道测试题目，涵盖单选、多选、文本题型，用于功能测试和开发调试。',
+      scaleType: 'flat',
+      showScores: true,
+      scaleConfig: {
+        totalQuestions: 12,
+        scoringType: 'sum',
+        scoreRange: { min: 0, max: 36 },
+        description: '快速测试题库，包含3种题型和条件逻辑示例'
+      },
+      teacherId: teacher.id,
+    },
+  });
+
+  // 测试题目数据
+  const testQuestions = [
+    // 单选题 (4题，必填)
+    {
+      title: "您的性别是？",
+      type: 'single_choice',
+      options: { "A": { text: "男", score: 1 }, "B": { text: "女", score: 2 }, "C": { text: "其他", score: 3 } },
+      required: true,
+      scored: true,
+      order: 1
+    },
+    {
+      title: "您的年龄段？",
+      type: 'single_choice', 
+      options: { "A": { text: "18岁以下", score: 1 }, "B": { text: "18-25岁", score: 2 }, "C": { text: "26-35岁", score: 3 }, "D": { text: "36岁以上", score: 4 } },
+      required: true,
+      scored: true,
+      order: 2
+    },
+    {
+      title: "您对心理测试的了解程度？",
+      type: 'single_choice',
+      options: { "A": { text: "完全不了解", score: 1 }, "B": { text: "了解一点", score: 2 }, "C": { text: "比较了解", score: 3 }, "D": { text: "非常了解", score: 4 } },
+      required: true,
+      scored: true,
+      order: 3
+    },
+    {
+      title: "您参与本次测试的目的？",
+      type: 'single_choice',
+      options: { "A": { text: "学术研究", score: 1 }, "B": { text: "自我了解", score: 2 }, "C": { text: "课程要求", score: 3 }, "D": { text: "其他", score: 4 } },
+      required: true,
+      scored: true,
+      order: 4
+    },
+    
+    // 多选题 (3题，必填)
+    {
+      title: "您常用的学习方式有哪些？（可多选）",
+      type: 'multiple_choice',
+      options: { "A": { text: "看书阅读", score: 1 }, "B": { text: "视频学习", score: 1 }, "C": { text: "实践操作", score: 1 }, "D": { text: "讨论交流", score: 1 }, "E": { text: "记忆背诵", score: 1 } },
+      required: true,
+      scored: true,
+      order: 5
+    },
+    {
+      title: "您希望从心理测试中获得什么？（可多选）",
+      type: 'multiple_choice',
+      options: { "A": { text: "了解性格", score: 1 }, "B": { text: "发现优势", score: 1 }, "C": { text: "改进不足", score: 1 }, "D": { text: "职业指导", score: 1 }, "E": { text: "学习建议", score: 1 } },
+      required: true,
+      scored: true,
+      order: 6
+    },
+    {
+      title: "您在以下哪些情况下会感到压力？（可多选）",
+      type: 'multiple_choice',
+      options: { "A": { text: "考试前", score: 1 }, "B": { text: "人际交往", score: 1 }, "C": { text: "工作任务", score: 1 }, "D": { text: "时间紧迫", score: 1 }, "E": { text: "决策选择", score: 1 } },
+      required: true,
+      scored: true,
+      order: 7
+    },
+    
+    // 文本题 (2题，选填)
+    {
+      title: "请简单描述您对心理健康的看法",
+      type: 'text',
+      options: {},
+      required: false,
+      scored: false,
+      order: 8
+    },
+    {
+      title: "如果可以改善一个个人特质，您会选择什么？为什么？",
+      type: 'text', 
+      options: {},
+      required: false,
+      scored: false,
+      order: 9
+    },
+    
+    // 条件逻辑题 (3题)
+    {
+      title: "您是否愿意接受进一步的心理咨询？",
+      type: 'single_choice',
+      options: { "A": { text: "非常愿意", score: 4 }, "B": { text: "比较愿意", score: 3 }, "C": { text: "不太愿意", score: 2 }, "D": { text: "完全不愿意", score: 1 } },
+      required: true,
+      scored: true,
+      order: 10,
+      condition: null // 无条件，总是显示
+    },
+    {
+      title: "您希望通过什么方式进行心理咨询？",
+      type: 'single_choice',
+      options: { "A": { text: "面对面咨询", score: 1 }, "B": { text: "在线视频", score: 2 }, "C": { text: "电话咨询", score: 3 }, "D": { text: "文字聊天", score: 4 } },
+      required: true,
+      scored: true,
+      order: 11,
+      condition: { question_order: 10, selected_options: ["A", "B"] } // 只有选择愿意的才显示
+    },
+    {
+      title: "请说明您希望改善的具体问题",
+      type: 'text',
+      options: {},
+      required: false,
+      scored: false,
+      order: 12,
+      condition: { question_order: 10, selected_options: ["A", "B"] } // 只有选择愿意的才显示
+    }
+  ];
+
+  // 创建测试题目并处理条件逻辑
+  const testQuestionIds = [];
+  const createdTestQuestions = [];
+  
+  for (const questionData of testQuestions) {
+    const question = await prisma.question.create({
+      data: {
+        paperId: testPaper.id,
+        questionOrder: questionData.order,
+        title: questionData.title,
+        options: questionData.options,
+        questionType: questionData.type,
+        isRequired: questionData.required,
+        isScored: questionData.scored,
+        displayCondition: Prisma.DbNull, // 暂时设为null，后面处理条件
+      }
+    });
+    testQuestionIds.push(question.id);
+    createdTestQuestions.push({ ...questionData, id: question.id });
+  }
+  
+  // 处理条件逻辑
+  for (const questionData of createdTestQuestions) {
+    if (questionData.condition) {
+      const dependentQuestion = createdTestQuestions.find(q => q.order === questionData.condition.question_order);
+      if (dependentQuestion) {
+        await prisma.question.update({
+          where: { id: questionData.id },
+          data: {
+            displayCondition: {
+              question_id: dependentQuestion.id,
+              selected_option: questionData.condition.selected_options[0] // 简化为单个选项
+            }
+          }
+        });
+      }
+    }
+  }
+
+  // 创建测试考试
+  const testExam = await prisma.exam.create({
+    data: {
+      title: '临时功能测试',
+      paperId: testPaper.id,
+      teacherId: teacher.id,
+      durationMinutes: 15,
+      questionIdsSnapshot: testQuestionIds,
+      status: 'PUBLISHED',
+    },
+  });
+
+  console.log(`✅ 创建临时测试题库: ${testQuestionIds.length}道题目`);
+
   console.log('🎉 心理量表数据播种完成！');
   console.log(`📚 教师账号: T2025001 / 123456`);
   console.log(`🔗 ASQ压力测评: http://localhost:3000/exam/${asqExam.publicUuid}`);
   console.log(`🔗 SCARED焦虑筛查: http://localhost:3000/exam/${scaredExam.publicUuid}`);
   console.log(`🔗 SCAS焦虑量表: http://localhost:3000/exam/${scasExam.publicUuid}`);
+  console.log(`🔗 临时功能测试: http://localhost:3000/exam/${testExam.publicUuid}`);
   console.log(`📊 数据统计:`);
   console.log(`   - ASQ: 10维度, 56题 (1-5分制, 总分56-280)`);
   console.log(`   - SCARED: 扁平结构, 41题 (0-2分制, 总分0-82)`);
   console.log(`   - SCAS: 6维度, 45题 (0-3分制, 38计分题最大114分)`);
+  console.log(`   - 临时测试: 扁平结构, 12题 (混合题型, 快速测试用)`);
 }
 
 main()

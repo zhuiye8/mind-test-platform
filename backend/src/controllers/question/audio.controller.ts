@@ -66,15 +66,18 @@ export const getQuestionsByPaper = async (req: Request, res: Response): Promise<
         options: question.options,
         question_type: question.questionType,
         display_condition: question.displayCondition,
-        created_at: question.createdAt,
-        updated_at: question.updatedAt,
+        is_required: question.isRequired,
+        is_scored: question.isScored,
+        score_value: question.scoreValue,
+        created_at: question.createdAt.toISOString(),
+        updated_at: question.updatedAt.toISOString(),
         // 语音文件状态
         audio_status: question.audio?.status || 'none',
         audio_url: question.audio?.fileUrl || null,
         audio_duration: question.audio?.duration || null,
         audio_needs_update: audioNeedsUpdate,
         audio_error: question.audio?.error || null,
-        audio_generated_at: question.audio?.generatedAt || null,
+        audio_generated_at: question.audio?.generatedAt?.toISOString() || null,
       };
     });
 

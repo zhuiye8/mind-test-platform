@@ -284,7 +284,6 @@ const ParticipantExam: React.FC = () => {
                     answer={answers[currentQuestion.id]}
                     onAnswerChange={handleAnswerChange}
                     showAudioPlayer={true}
-                    showVoiceInteraction={true}
                     timelineRecorder={timelineRecorder}
                   />
                 ) : (

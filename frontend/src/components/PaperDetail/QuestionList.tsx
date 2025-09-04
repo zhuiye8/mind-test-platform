@@ -2,7 +2,7 @@
  * QuestionList - 题目列表组件
  * 显示题目列表，支持排序、编辑、删除等操作
  */
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Table,
   Button,
@@ -12,6 +12,7 @@ import {
   Typography,
   Empty,
   Modal,
+  Popover,
 } from 'antd';
 import {
   EditOutlined,
@@ -21,6 +22,7 @@ import {
   ExclamationCircleOutlined,
   CheckCircleOutlined,
   MinusCircleOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { Question } from '../../types';
@@ -56,20 +58,51 @@ const QuestionList: React.FC<QuestionListProps> = ({
     const entries = Object.entries(options);
     if (entries.length === 0) return '无选项';
     
+    // 显示前2个选项的简化版本
+    const previewOptions = entries.slice(0, 2).map(([key, value]) => {
+      const text = typeof value === 'string' ? value : value?.text || value?.label || '选项';
+      return (
+        <div key={key} style={{ marginBottom: 2 }}>
+          <Text code>{key}</Text>: {text.length > 20 ? `${text.substring(0, 20)}...` : text}
+        </div>
+      );
+    });
+
+    // 完整选项列表（用于Popover）
+    const allOptions = entries.map(([key, value]) => {
+      const text = typeof value === 'string' ? value : value?.text || value?.label || '选项';
+      const score = typeof value === 'object' && value?.score !== undefined ? ` (${value.score}分)` : '';
+      return (
+        <div key={key} style={{ marginBottom: 4, padding: '4px 8px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+          <Text code style={{ marginRight: 8 }}>{key}</Text>
+          <Text>{text}{score}</Text>
+        </div>
+      );
+    });
+
+    const content = (
+      <div style={{ maxWidth: 400, maxHeight: 300, overflow: 'auto' }}>
+        <div style={{ marginBottom: 8 }}>
+          <Text strong>所有选项 ({entries.length}个)</Text>
+        </div>
+        {allOptions}
+      </div>
+    );
+
     return (
       <div>
-        {entries.slice(0, 2).map(([key, value]) => {
-          const text = typeof value === 'string' ? value : value?.text || value?.label || '选项';
-          return (
-            <div key={key} style={{ marginBottom: 2 }}>
-              <Text code>{key}</Text>: {text.length > 20 ? `${text.substring(0, 20)}...` : text}
-            </div>
-          );
-        })}
+        {previewOptions}
         {entries.length > 2 && (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            ...还有 {entries.length - 2} 个选项
-          </Text>
+          <Popover content={content} title="查看所有选项" placement="topLeft">
+            <Button 
+              size="small" 
+              type="link" 
+              icon={<EyeOutlined />}
+              style={{ padding: 0, fontSize: 12 }}
+            >
+              查看全部 {entries.length} 个选项
+            </Button>
+          </Popover>
         )}
       </div>
     );
@@ -117,17 +150,17 @@ const QuestionList: React.FC<QuestionListProps> = ({
             </Text>
           </Tooltip>
           <Space size="small">
-            {record.is_required && (
+            {(record.is_required ?? record.isRequired ?? true) && (
               <Tag icon={<ExclamationCircleOutlined />} color="red" size="small">
                 必填
               </Tag>
             )}
-            {record.is_scored && (
+            {(record.is_scored ?? record.isScored ?? true) && (
               <Tag icon={<CheckCircleOutlined />} color="green" size="small">
                 计分
               </Tag>
             )}
-            {!record.is_required && !record.is_scored && (
+            {!(record.is_required ?? record.isRequired ?? true) && !(record.is_scored ?? record.isScored ?? true) && (
               <Tag icon={<MinusCircleOutlined />} color="default" size="small">
                 可选
               </Tag>
@@ -153,15 +186,22 @@ const QuestionList: React.FC<QuestionListProps> = ({
     },
     {
       title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'created_at',
+      key: 'created_at',
       width: 120,
-      render: (date: string) => new Date(date).toLocaleDateString(),
+      render: (date: string) => {
+        if (!date) return '未知';
+        try {
+          return new Date(date).toLocaleDateString('zh-CN');
+        } catch {
+          return '无效日期';
+        }
+      },
     },
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 240,
       fixed: 'right',
       render: (_, record: Question) => (
         <Space size="small">

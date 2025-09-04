@@ -14,6 +14,8 @@ export const createQuestion = async (req: Request, res: Response): Promise<void>
       options,
       question_type,
       display_condition,
+      is_required = true,
+      is_scored = false,
     }: CreateQuestionRequest = req.body;
     const teacherId = req.teacher?.id;
 
@@ -119,6 +121,8 @@ export const createQuestion = async (req: Request, res: Response): Promise<void>
         options,
         questionType: question_type,
         displayCondition: display_condition as any,
+        isRequired: is_required,
+        isScored: is_scored,
       },
       include: {
         paper: {
@@ -141,7 +145,14 @@ export const createQuestion = async (req: Request, res: Response): Promise<void>
 export const updateQuestion = async (req: Request, res: Response): Promise<void> => {
   try {
     const { questionId } = req.params;
-    const { title, options, question_type, display_condition }: CreateQuestionRequest = req.body;
+    const { 
+      title, 
+      options, 
+      question_type, 
+      display_condition,
+      is_required,
+      is_scored 
+    }: CreateQuestionRequest = req.body;
     const teacherId = req.teacher?.id;
 
     if (!teacherId) {
@@ -219,6 +230,8 @@ export const updateQuestion = async (req: Request, res: Response): Promise<void>
         ...(options && { options }),
         ...(question_type && { questionType: question_type }),
         displayCondition: display_condition as any,
+        ...(is_required !== undefined && { isRequired: is_required }),
+        ...(is_scored !== undefined && { isScored: is_scored }),
       },
       include: {
         paper: {

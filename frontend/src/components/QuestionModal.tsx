@@ -163,10 +163,13 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
       // 构建选项数据
       let optionsData: Record<string, string | QuestionOption> = {};
       if (questionType !== 'text') {
+        console.log('🔍 Options before processing:', options);
+        
         optionsData = Object.fromEntries(
           options
             .filter(opt => opt.text.trim())
             .map(opt => {
+              console.log(`🔍 Processing option: key="${opt.key}", text="${opt.text}"`);
               if (isScored && opt.score !== undefined) {
                 // 计分模式：使用对象格式
                 return [opt.key, { text: opt.text.trim(), score: opt.score }];
@@ -176,6 +179,8 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
               }
             })
         );
+        
+        console.log('🔍 OptionsData built:', optionsData);
       }
 
       // 构建提交数据
@@ -183,12 +188,15 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
         title: values.title.trim(),
         question_type: values.question_type,
         options: optionsData,
-        // 如果是编辑模式，使用现有顺序；如果是新建，使用默认顺序
-        question_order: question?.question_order || 1,
+        // 编辑模式使用现有顺序，新增模式由usePaperDetail自动计算
+        question_order: question?.question_order || 0, // 新增时为0，由hook重新计算
         // 添加必填字段
         is_required: values.is_required !== false, // 默认为true
         is_scored: isScored, // 是否计分
       };
+
+      console.log('🔍 Final submitData:', submitData);
+      console.log('🔍 Final submitData.options:', submitData.options);
 
       await onSubmit(submitData);
       message.success(question ? '题目更新成功' : '题目创建成功');
@@ -207,7 +215,7 @@ const QuestionModal: React.FC<QuestionModalProps> = ({
       open={visible}
       onCancel={onCancel}
       width={700}
-      destroyOnClose={true}
+      destroyOnHidden={true}
       footer={[
         <Button key="cancel" onClick={onCancel}>
           取消

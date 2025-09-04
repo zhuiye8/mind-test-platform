@@ -34,3 +34,9 @@ export {
   batchGenerateAudio,
   getPaperAudioStatus
 } from './audio.controller';
+
+// 计分管理功能
+export {
+  batchSetScoring,
+  previewBatchScoring
+} from './scoring.controller';

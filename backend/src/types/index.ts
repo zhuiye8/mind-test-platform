@@ -39,6 +39,8 @@ export interface CreateQuestionRequest {
   options: QuestionOptions;
   question_type: QuestionType;
   display_condition?: DisplayCondition | null;
+  is_required?: boolean;
+  is_scored?: boolean;
 }
 
 // 创建试卷的请求类型

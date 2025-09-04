@@ -159,8 +159,10 @@ export const getPaperById = async (req: Request, res: Response): Promise<void> =
       options: question.options,
       question_type: question.questionType,
       display_condition: question.displayCondition,
-      created_at: question.createdAt,
-      updated_at: question.updatedAt,
+      is_required: question.isRequired,
+      is_scored: question.isScored,
+      created_at: question.createdAt.toISOString(),
+      updated_at: question.updatedAt.toISOString(),
     }));
 
     const paperDetail = {
@@ -169,8 +171,8 @@ export const getPaperById = async (req: Request, res: Response): Promise<void> =
       description: paper.description,
       exam_count: paper._count.exams,
       questions: formattedQuestions,
-      created_at: paper.createdAt,
-      updated_at: paper.updatedAt,
+      created_at: paper.createdAt.toISOString(),
+      updated_at: paper.updatedAt.toISOString(),
       teacher_id: teacherId, // 用于权限验证
     };
 
