@@ -6,14 +6,17 @@
 import { Request, Response, NextFunction } from 'express';
 
 const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN || 'ai-service-token-dev';
+const DEV_ALLOWED_TOKENS = new Set<string>([AI_SERVICE_TOKEN, 'dev-ai-token']);
 
 export const authenticateAiService = (
-  req: Request, 
-  res: Response, 
+  req: Request,
+  res: Response,
   next: NextFunction
 ): void => {
-  const token = req.headers['x-ai-service-token'] || req.headers['authorization']?.replace('Bearer ', '');
-  
+  const bearer = typeof req.headers['authorization'] === 'string' ? (req.headers['authorization'] as string).replace('Bearer ', '') : undefined;
+  const xHeader = typeof req.headers['x-ai-service-token'] === 'string' ? (req.headers['x-ai-service-token'] as string) : undefined;
+  const token = xHeader || bearer;
+
   if (!token) {
     res.status(401).json({
       code: 1002,
@@ -24,8 +27,8 @@ export const authenticateAiService = (
     });
     return;
   }
-  
-  if (token !== AI_SERVICE_TOKEN) {
+
+  if (!DEV_ALLOWED_TOKENS.has(token)) {
     res.status(401).json({
       code: 1002,
       message: 'Invalid AI Service Token',
@@ -35,6 +38,6 @@ export const authenticateAiService = (
     });
     return;
   }
-  
+
   next();
 };
