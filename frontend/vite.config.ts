@@ -32,8 +32,7 @@ export default defineConfig({
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           // WebRTC相关代码单独打包
           'webrtc': [
-            './src/services/localWebRTC/localWebRTCService.ts',
-            './src/hooks/useDataChannel.ts'
+            './src/services/webrtcPublisher.ts'
           ],
           // 工具库
           'utils': ['dayjs', 'axios']

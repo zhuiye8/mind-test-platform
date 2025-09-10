@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Card, Radio, Checkbox, Input, Typography, Space, Badge, Tag, Divider, Avatar } from 'antd';
+import { Card, Radio, Checkbox, Input, Typography, Space, Badge, Tag, Divider, Avatar, Button } from 'antd';
 import { 
   StarOutlined, 
   ExclamationCircleOutlined,
@@ -51,9 +51,20 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
 
   // 悬停状态管理
   const [hoveredOption, setHoveredOption] = useState<string | null>(null);
+  // 题目提示可收起
+  const [showHint, setShowHint] = useState(true);
 
   // 渲染单选题
   const renderSingleChoice = useCallback(() => {
+    const handleContainerClick = (key: string) => (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      // 避免与内部控件点击重复触发
+      if (target.closest('.ant-radio-wrapper, .ant-radio, input, label')) return;
+      if (answer !== key) {
+        handleAnswerChange(key);
+      }
+    };
+
     return (
       <Radio.Group
         value={answer}
@@ -72,13 +83,14 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
               )}
               onMouseEnter={() => setHoveredOption(key)}
               onMouseLeave={() => setHoveredOption(null)}
+              onClick={handleContainerClick(key)}
             >
               <Radio 
                 value={key} 
                 disabled={disabled}
-                style={{ display: 'flex', alignItems: 'flex-start' }}
+                style={{ display: 'flex', alignItems: 'flex-start', width: '100%' }}
               >
-                <span style={{ marginLeft: 12, fontSize: '16px', lineHeight: '1.6' }}>
+                <span style={{ marginLeft: 12, fontSize: '16px', lineHeight: '1.6', flex: 1 }}>
                   {typeof value === 'string' ? value : (value as any)?.text || (value as any)?.label || ''}
                 </span>
               </Radio>
@@ -95,6 +107,18 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
 
     const handleCheckboxChange = (checkedValues: string[]) => {
       handleAnswerChange(checkedValues);
+    };
+
+    const handleContainerClick = (key: string) => (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.ant-checkbox-wrapper, .ant-checkbox, input, label')) return;
+      const set = new Set<string>(selectedValues);
+      if (set.has(key)) {
+        set.delete(key);
+      } else {
+        set.add(key);
+      }
+      handleAnswerChange(Array.from(set));
     };
 
     return (
@@ -115,13 +139,14 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
               )}
               onMouseEnter={() => setHoveredOption(key)}
               onMouseLeave={() => setHoveredOption(null)}
+              onClick={handleContainerClick(key)}
             >
               <Checkbox 
                 value={key} 
                 disabled={disabled}
-                style={{ display: 'flex', alignItems: 'flex-start' }}
+                style={{ display: 'flex', alignItems: 'flex-start', width: '100%' }}
               >
-                <span style={{ marginLeft: 12, fontSize: '16px', lineHeight: '1.6' }}>
+                <span style={{ marginLeft: 12, fontSize: '16px', lineHeight: '1.6', flex: 1 }}>
                   {typeof value === 'string' ? value : (value as any)?.text || (value as any)?.label || ''}
                 </span>
               </Checkbox>
@@ -312,21 +337,28 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
         </>
       )}
 
-      {/* 题目提示 */}
+      {/* 题目提示（默认展开，可收起） */}
       {question.hint && (
         <>
           <Divider />
-          <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-            <div className="flex items-start">
-              <ExclamationCircleOutlined className="text-blue-400 mt-1 mr-2" />
-              <div>
-                <Text strong className="text-blue-800">提示</Text>
-                <Paragraph className="text-blue-700 mb-0 mt-1">
-                  {question.hint}
-                </Paragraph>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text strong className="text-blue-800">提示</Text>
+            <Button type="text" size="small" onClick={() => setShowHint(v => !v)}>
+              {showHint ? '收起' : '展开'}
+            </Button>
+          </div>
+          {showHint && (
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+              <div className="flex items-start">
+                <ExclamationCircleOutlined className="text-blue-400 mt-1 mr-2" />
+                <div>
+                  <Paragraph className="text-blue-700 mb-0 mt-1">
+                    {question.hint}
+                  </Paragraph>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </>
       )}
     </Card>

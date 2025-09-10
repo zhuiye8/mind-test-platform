@@ -13,12 +13,19 @@
 - **question_audio表**: questionId, audioFile, speechUrl, duration, contentHash, generatedAt, isValid
 - **audio_generation_tasks表**: 批量生成任务记录
 
-## 主要接口
-- `POST /api/audio/questions/:questionId/upload` → 文件上传结果
-- `POST /api/audio/questions/:questionId/generate` → TTS生成任务
-- `GET /api/audio/questions/:questionId` → 音频文件信息
-- `POST /api/audio/papers/:paperId/batch-generate` → 批量生成任务
-- `GET /api/audio/papers/:paperId/progress` → 批量生成进度
+## 主要接口（与路由实现同步）
+- 公开访问（免认证）
+  - `HEAD /api/audio/questions/:question_id/:filename` → 探测文件可用性
+  - `GET /api/audio/questions/:question_id/:filename` → 获取音频文件（支持 Range/CORS/缓存）
+- 教师端（需认证）
+  - `POST /api/audio/questions/:question_id/generate` → 生成语音（旧管道）
+  - `POST /api/audio/questions/:question_id/generate-single` → 生成语音（新管道，TTS任务管理）
+  - `DELETE /api/audio/questions/:question_id` → 删除题目音频
+  - `GET /api/audio/questions/:question_id/info` → 获取题目音频信息
+  - `GET /api/audio/questions/:question_id/check-update` → 检查是否需要更新
+  - `POST /api/audio/papers/:paper_id/batch-generate` → 批量生成音频
+  - `GET /api/audio/papers/:paper_id/status` → 获取试卷音频状态聚合
+  - `POST /api/audio/cleanup` → 清理孤立音频文件
 
 ## 核心功能
 - 单个题目音频生成（百度TTS）
@@ -30,6 +37,6 @@
 
 ## 注意事项
 - 百度TTS API集成（支持多种参数配置）
-- 文件存储在uploads/audio目录
-- 支持MP3格式验证和错误重试
-- 并发控制和任务队列管理
+- 文件存储在 `uploads/audio` 目录
+- GET/HEAD 端点已处理 CORS/Range/缓存；适合前端 `<audio>` 直接访问
+- 并发控制和任务队列管理（批量任务）

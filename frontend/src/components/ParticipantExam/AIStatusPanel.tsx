@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Typography, Space } from 'antd';
+import { Card, Typography } from 'antd';
 
 interface Props {
   aiAvailable: boolean | null;
@@ -10,13 +10,21 @@ interface Props {
 }
 
 // AI 监测状态面板
-const AIStatusPanel: React.FC<Props> = ({
-  aiAvailable,
-  aiConfigLoading,
-  webrtcConnectionState,
-  emotionAnalysis,
-  heartRate,
-}) => {
+const AIStatusPanel: React.FC<Props> = ({ aiAvailable, aiConfigLoading }) => {
+  // 简化展示：仅显示AI检测是否正常，隐藏情绪/心率等细节
+  const statusText = aiConfigLoading
+    ? '检测中…'
+    : aiAvailable
+    ? '正常'
+    : '未启用';
+
+  const bg = aiConfigLoading
+    ? 'rgba(245, 158, 11, 0.12)'
+    : aiAvailable
+    ? 'rgba(16, 185, 129, 0.12)'
+    : 'rgba(156, 163, 175, 0.2)';
+  const color = aiConfigLoading ? '#92400e' : aiAvailable ? '#065f46' : '#374151';
+
   return (
     <Card
       style={{
@@ -25,61 +33,23 @@ const AIStatusPanel: React.FC<Props> = ({
         backdropFilter: 'blur(12px)',
         borderRadius: 16,
       }}
+      bodyStyle={{ padding: 16 }}
     >
-      <Space direction="vertical" style={{ width: '100%' }} size="middle">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography.Text strong style={{ fontSize: 14 }}>AI监测状态</Typography.Text>
-          <span
-            style={{
-              padding: '4px 8px',
-              borderRadius: 12,
-              fontSize: 12,
-              fontWeight: 500,
-              background:
-                webrtcConnectionState?.status === 'connected'
-                  ? '#f0f9ff'
-                  : webrtcConnectionState?.status === 'connecting'
-                  ? '#fef3c7'
-                  : '#f3f4f6',
-              color:
-                webrtcConnectionState?.status === 'connected'
-                  ? '#1e40af'
-                  : webrtcConnectionState?.status === 'connecting'
-                  ? '#92400e'
-                  : '#6b7280',
-            }}
-          >
-            {webrtcConnectionState?.status === 'connected' && '已连接'}
-            {webrtcConnectionState?.status === 'connecting' && '连接中'}
-            {webrtcConnectionState?.status === 'failed' && '连接失败'}
-            {!webrtcConnectionState?.status && '未连接'}
-          </span>
-        </div>
-
-        {!aiAvailable && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            AI服务未启用，本次不进行实时分析
-          </Typography.Text>
-        )}
-
-        {emotionAnalysis && (
-          <div style={{ fontSize: 13 }}>
-            <Typography.Text type="secondary">情绪状态:</Typography.Text>
-            <Typography.Text strong style={{ marginLeft: 8 }}>
-              {typeof emotionAnalysis === 'string' ? emotionAnalysis : '分析中...'}
-            </Typography.Text>
-          </div>
-        )}
-
-        {heartRate > 0 && (
-          <div style={{ fontSize: 13 }}>
-            <Typography.Text type="secondary">心率:</Typography.Text>
-            <Typography.Text strong style={{ marginLeft: 8, color: '#dc2626' }}>
-              {heartRate} BPM
-            </Typography.Text>
-          </div>
-        )}
-      </Space>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography.Text strong style={{ fontSize: 14 }}>AI监测状态</Typography.Text>
+        <span
+          style={{
+            padding: '4px 10px',
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 600,
+            background: bg,
+            color,
+          }}
+        >
+          {statusText}
+        </span>
+      </div>
     </Card>
   );
 };

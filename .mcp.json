@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "jina-mcp-server": {
+      "type": "sse",
+      "url": "${JINA_API_KEY:-https://mcp.jina.ai/sse}",
+      "headers": {
+        "Authorization": "Bearer jina_1826a453229c436ea004e9da369c6eb94h3-oYM5MGLpc_8DVqI6O2400FM5"
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ import reportRoutes from './reportRoutes';
 import audioRoutes from './audioRoutes';
 import aiProxyRoutes from './aiProxyRoutes';
 import aiServiceRoutes from './aiServiceRoutes';
+import webrtcRoutes from './webrtcRoutes';
 
 const router = Router();
 
@@ -46,5 +47,6 @@ router.use('/reports', reportRoutes);         // AI报告生成路由
 router.use('/audio', audioRoutes);            // 语音文件管理路由
 router.use('/ai-proxy', aiProxyRoutes);       // AI服务代理路由（解决CORS问题）
 router.use('/ai-service', aiServiceRoutes);   // AI 服务专用路由
+router.use('/', webrtcRoutes);                // WebRTC WHIP/WHEP 代理与启动API
 
 export default router;

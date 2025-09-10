@@ -55,6 +55,7 @@ const App: React.FC = () => {
             {/* 公开路由 */}
             <Route path="/login" element={<Login />} />
             <Route path="/exam/:examUuid" element={<ParticipantExam />} />
+            {/* 开发测试页已移除：/webrtc-test */}
             
             {/* 私有路由 */}
             <Route path="/" element={

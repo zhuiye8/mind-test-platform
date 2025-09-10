@@ -4,7 +4,7 @@
  */
 
 // AI服务配置 - 若未显式设置，则使用本地地址
-export const AI_SERVICE_BASE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5000';
+export const AI_SERVICE_BASE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5678';
 
 // 默认超时配置
 export const DEFAULT_TIMEOUT = {
@@ -22,6 +22,6 @@ export function buildWebSocketUrl(baseUrl: string): string {
     return `${wsProtocol}//${url.hostname}:${url.port || (url.protocol === 'https:' ? '443' : '80')}/socket.io/`;
   } catch (error) {
     console.error('构建WebSocket URL失败:', error);
-    return `ws://localhost:5000/socket.io/`;
+    return `ws://localhost:5678/socket.io/`;
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Card, Typography, Modal, App, Row, Col, Progress,Divider,Space } from 'antd';
 import { 
@@ -13,7 +13,7 @@ import {
   ClockCircleOutlined,
   ArrowLeftOutlined
 } from '@ant-design/icons';
-// 使用全新设备检测页面
+// 使用全新设备连接页面
 import { DeviceCheckPage } from '../DeviceCheck';
 import { enhancedPublicApi } from '../../services/enhancedPublicApi';
 import type { Question } from '../../types';
@@ -57,7 +57,7 @@ interface ExamStateManagerProps {
   loading: boolean;
   setLoading: (loading: boolean) => void;
   onExamStart: () => void;
-  // 向父组件上报设备检测结果（用于提交时附带）
+  // 向父组件上报设备连接结果（用于提交时附带）
   onDeviceTestComplete?: (results: any) => void;
 }
 
@@ -76,6 +76,9 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
   const { message } = App.useApp();
   const { examUuid } = useParams<{ examUuid: string }>();
   const navigate = useNavigate();
+  
+  // 步骤历史追踪，用于正确的返回上一步功能
+  const [stepHistory, setStepHistory] = useState<ExamStep[]>([]);
 
   // 加载考试信息
   const loadExamInfo = async () => {
@@ -93,11 +96,11 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
         setExam(response.data);
         
         // 如果考试不需要密码，直接进入信息填写步骤
-        // 需求调整：设备检测应在信息填写之后
+        // 需求调整：设备连接应在信息填写之后
         if (!response.data.password_required) {
-          setCurrentStep('info');
+          setCurrentStepWithHistory('info');
         } else {
-          setCurrentStep('password');
+          setCurrentStepWithHistory('password');
         }
       } else {
         throw new Error(response.error?.toString() || '考试信息获取失败');
@@ -126,7 +129,7 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
         // 验证成功后，后端已返回完整的考试信息（含题目），直接写入状态
         setExam(response.data as ExamInfo);
         // 需求调整：密码通过后进入信息填写步骤
-        setCurrentStep('info');
+        setCurrentStepWithHistory('info');
         message.success('密码验证成功');
       } else {
         message.error(response.error?.toString() || '密码验证失败');
@@ -145,8 +148,8 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
     // 保存参与者信息到localStorage
     localStorage.setItem('participantInfo', JSON.stringify(values));
     message.success('参与者信息已保存');
-    // 进入设备检测步骤（信息填写之后）
-    setCurrentStep('device-test');
+    // 进入设备连接步骤（信息填写之后）
+    setCurrentStepWithHistory('device-test');
   };
 
   // 设备测试结果
@@ -162,11 +165,11 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
     setDeviceTestResults(results);
     // 上报给父组件（用于提交时附带）
     onDeviceTestComplete?.(results);
-    message.success('设备检测完成');
+    message.success('设备连接完成');
     
     // 如果有考试说明，进入说明页；否则直接开始考试
     if (exam?.description) {
-      setCurrentStep('description');
+      setCurrentStepWithHistory('description');
     } else {
       handleStartExam();
     }
@@ -174,20 +177,45 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
   
   // 跳过设备测试
   const handleDeviceTestSkip = () => {
-    // 跳过设备检测：允许进入说明/考试，但给予提示
-    message.info('已跳过设备检测');
+    // 跳过设备连接：允许进入说明/考试，但给予提示
+    message.info('已跳过设备连接');
     // 上报跳过信息（最小结果集）
     onDeviceTestComplete?.({ cameraPermission: false, microphonePermission: false, testPassed: false, skipped: true });
     if (exam?.description) {
-      setCurrentStep('description');
+      setCurrentStepWithHistory('description');
     } else {
       handleStartExam();
     }
   };
 
+  // 步骤切换带历史记录的包装函数
+  const setCurrentStepWithHistory = useCallback((newStep: ExamStep) => {
+    setStepHistory(prev => {
+      // 避免重复添加相同步骤到历史中
+      if (prev.length === 0 || prev[prev.length - 1] !== currentStep) {
+        return [...prev, currentStep];
+      }
+      return prev;
+    });
+    setCurrentStep(newStep);
+    console.log(`步骤切换: ${currentStep} -> ${newStep}`);
+  }, [currentStep, setCurrentStep]);
+
+  // 返回上一步的功能
+  const goToPreviousStep = useCallback(() => {
+    if (stepHistory.length > 0) {
+      const previousStep = stepHistory[stepHistory.length - 1];
+      setStepHistory(prev => prev.slice(0, -1)); // 移除最后一个历史记录
+      setCurrentStep(previousStep);
+      console.log(`返回上一步: ${currentStep} -> ${previousStep}`);
+    } else {
+      console.warn('没有可返回的历史步骤');
+    }
+  }, [stepHistory, currentStep, setCurrentStep]);
+
   // 开始考试
   const handleStartExam = () => {
-    setCurrentStep('exam');
+    setCurrentStepWithHistory('exam');
     onExamStart();
   };
 
@@ -450,7 +478,7 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
                   />
                 </Form.Item>
 
-                {/* 集成的设备检测区域 (可选) */}
+                {/* 集成的设备连接区域 (可选) */}
                 
                 <Form.Item style={{ marginBottom: 0 }}>
                   <Button 
@@ -483,7 +511,7 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
         </div>
       )}
 
-      {/* 设备检测步骤（重写版） */}
+      {/* 设备连接步骤（重写版） */}
       {currentStep === 'device-test' && (
         <DeviceCheckPage
           onComplete={handleDeviceTestComplete}
@@ -564,7 +592,8 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
               <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
                 <Button 
                   size="large"
-                  onClick={() => setCurrentStep('info')}
+                  onClick={goToPreviousStep}
+                  disabled={stepHistory.length === 0}
                   style={{
                     ...buttonStyles.navigation,
                     fontSize: 16

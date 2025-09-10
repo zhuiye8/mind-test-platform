@@ -13,6 +13,9 @@ export interface AIServiceConfig {
 export interface CreateSessionRequest {
   participant_id?: string;
   exam_id?: string;
+  // 额外上下文（用于统一流名与AI监控）
+  exam_public_uuid?: string;
+  stream_name?: string;
 }
 
 export interface CreateSessionResponse {

@@ -19,7 +19,7 @@ export interface ProxyResult<T = any> {
 }
 
 // AI服务配置，未设置时默认连接本地服务
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5000';
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5678';
 
 /**
  * AI代理服务类
@@ -178,7 +178,7 @@ class AIProxyService {
    */
   getWebSocketConfig() {
     // 🎯 V2简化策略：直接返回AI服务地址
-    const directUrl = 'http://localhost:5000';  // 使用HTTP协议，让Socket.IO自动处理
+      const directUrl = 'http://localhost:5678';  // 使用HTTP协议，让Socket.IO自动处理
     
     logger.info(`V2配置: 返回简化直连地址: ${directUrl}`);
     logger.info('传输策略: polling优先，避免WebSocket升级问题');

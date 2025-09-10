@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Modal, Button, Space, Typography, Alert, Progress, Result, Card } from 'antd';
 import { 
   CheckCircleOutlined, 
@@ -41,20 +41,28 @@ interface SubmissionState {
   result: any;
 }
 
-const ExamSubmissionManager: React.FC<ExamSubmissionManagerProps> = ({
-  examUuid,
-  participantInfo,
-  answers,
-  questions,
-  examStartTime,
-  deviceTestResults,
-  timelineData,
-  voiceInteractions,
-  onSubmissionStart,
-  onSubmissionSuccess,
-  onSubmissionError,
-  onSubmissionCancel
-}) => {
+// 暴露给父组件的方法接口
+export interface ExamSubmissionManagerRef {
+  showSubmissionConfirm: (isTimeout?: boolean) => void;
+}
+
+const ExamSubmissionManager = forwardRef<ExamSubmissionManagerRef, ExamSubmissionManagerProps>((
+  {
+    examUuid,
+    participantInfo,
+    answers,
+    questions,
+    examStartTime,
+    deviceTestResults,
+    timelineData,
+    voiceInteractions,
+    onSubmissionStart,
+    onSubmissionSuccess,
+    onSubmissionError,
+    onSubmissionCancel
+  },
+  ref
+) => {
   const [submissionState, setSubmissionState] = useState<SubmissionState>({
     submitting: false,
     submitted: false,
@@ -86,24 +94,7 @@ const ExamSubmissionManager: React.FC<ExamSubmissionManagerProps> = ({
     return errors;
   }, [answers, questions]);
 
-  // 显示提交确认对话框
-  const showSubmissionConfirm = useCallback((isTimeout: boolean = false) => {
-    const validationErrors = validateAnswers();
-    
-    setSubmissionState(prev => ({
-      ...prev,
-      showConfirmModal: true,
-      validationErrors,
-      error: null
-    }));
-
-    if (isTimeout) {
-      // 时间到自动提交
-      handleSubmitExam(true);
-    }
-  }, [validateAnswers]);
-
-  // 提交考试
+    // 提交考试
   const handleSubmitExam = useCallback(async (isTimeout: boolean = false) => {
     if (!participantInfo || !examUuid) {
       const error = '缺少必要信息，无法提交考试';
@@ -158,9 +149,9 @@ const ExamSubmissionManager: React.FC<ExamSubmissionManagerProps> = ({
           result: response.data
         }));
 
-        // 清除本地存储的答案
-        localStorage.removeItem(`exam_answers_${examUuid}`);
-        localStorage.removeItem(`exam_progress_${examUuid}`);
+        // 清除本地存储的答案（使用包含participantId的键名）
+        localStorage.removeItem(`exam_answers_${examUuid}_${participantInfo.participantId}`);
+        localStorage.removeItem(`exam_progress_${examUuid}_${participantInfo.participantId}`);
         localStorage.removeItem('participantInfo');
 
         logger.info('考试提交成功');
@@ -196,6 +187,28 @@ const ExamSubmissionManager: React.FC<ExamSubmissionManagerProps> = ({
     onSubmissionSuccess,
     onSubmissionError
   ]);
+
+  // 显示提交确认对话框（依赖已定义的 handleSubmitExam）
+  const showSubmissionConfirm = useCallback((isTimeout: boolean = false) => {
+    const validationErrors = validateAnswers();
+    
+    setSubmissionState(prev => ({
+      ...prev,
+      showConfirmModal: true,
+      validationErrors,
+      error: null
+    }));
+
+    if (isTimeout) {
+      // 时间到自动提交
+      handleSubmitExam(true);
+    }
+  }, [validateAnswers, handleSubmitExam]);
+
+  // 使用 useImperativeHandle 暴露方法给父组件
+  useImperativeHandle(ref, () => ({
+    showSubmissionConfirm
+  }), [showSubmissionConfirm]);
 
   // 重试提交
   const handleRetrySubmission = useCallback(() => {
@@ -403,18 +416,10 @@ const ExamSubmissionManager: React.FC<ExamSubmissionManagerProps> = ({
       </Modal>
     </>
   );
-};
+});
 
-// 导出提交管理器的公共方法
-export const useSubmissionManager = (props: ExamSubmissionManagerProps) => {
-  const [manager] = useState(() => React.createRef<ExamSubmissionManagerProps>());
-  
-  return {
-    showSubmissionConfirm: (isTimeout?: boolean) => {
-      // 触发提交确认对话框
-    }
-  };
-};
+// 设置显示名称用于React DevTools
+ExamSubmissionManager.displayName = 'ExamSubmissionManager';
 
-export { ExamSubmissionManager, type ExamSubmissionManagerProps };
+export { ExamSubmissionManager, type ExamSubmissionManagerProps, type ExamSubmissionManagerRef };
 export default ExamSubmissionManager;

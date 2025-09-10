@@ -187,8 +187,8 @@ export const enhancedPublicApi = {
     participant_name: string;
     started_at?: string;
   }): Promise<ApiResponse<{
-    examResultId: string | null;
-    aiSessionId: string | null;
+    exam_result_id: string | null;
+    ai_session_id: string | null;
     message: string;
     warning?: string;
   }>> {
@@ -209,8 +209,8 @@ export const enhancedPublicApi = {
         return {
           success: true,
           data: {
-            examResultId: null,
-            aiSessionId: null,
+            exam_result_id: null,
+            ai_session_id: null,
             message: 'Exam will continue without AI analysis',
             warning: 'AI analysis is temporarily unavailable'
           },

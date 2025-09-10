@@ -17,7 +17,7 @@
 - API：创建/结束会话在考试页触发；大屏仅展示与必要控制（不重复创建/结束）。
 
 ## 2.1 环境变量（建议）
-- `VITE_AI_SERVICE_URL`：AI 服务地址（例如 `http://localhost:5000`）。前端跳转时拼接该地址。
+- `VITE_AI_SERVICE_URL`：AI 服务地址（例如 `http://localhost:5678`）。前端跳转时拼接该地址。
 - `VITE_API_BASE_URL`：后端 API 地址（已有）。
 
 ## 3. 组件建议
@@ -60,7 +60,7 @@ export type MonitorUpdate = {
 ## 6. UI 集成示例（跳转按钮）
 ```tsx
 // 示例：在 Dashboard 添加按钮
-const aiBase = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:5000';
+const aiBase = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:5678';
 <Button onClick={() => window.open(`${aiBase}/records`, '_blank')}>打开AI大屏</Button>
 ```
 

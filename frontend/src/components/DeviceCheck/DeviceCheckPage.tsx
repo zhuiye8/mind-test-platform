@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo } from 'react';
-import { Button, Card, Row, Col, Space, Typography } from 'antd';
-import { ReloadOutlined, CheckCircleOutlined, StepForwardOutlined, SecurityScanOutlined } from '@ant-design/icons';
+import { Button, Card, Row, Col, Typography } from 'antd';
+import { ReloadOutlined, CheckCircleOutlined, StepForwardOutlined, WifiOutlined } from '@ant-design/icons';
 import { gradientThemes, cardStyles, buttonStyles } from '../ParticipantExam/ParticipantExam.styles';
 import { useDeviceCheck } from './hooks/useDeviceCheck';
+import { useMediaStream } from '../../contexts/MediaStreamContext';
 import CameraPreview from './components/CameraPreview';
 import MicrophoneMeter from './components/MicrophoneMeter';
 import TroubleshootTips from './components/TroubleshootTips';
@@ -12,6 +13,7 @@ const { Title, Text } = Typography;
 
 const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip }) => {
   const dc = useDeviceCheck();
+  const mediaStream = useMediaStream();
 
   // 页面加载即准备设备
   useEffect(() => {
@@ -19,7 +21,8 @@ const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const canContinue = dc.cameraOk || dc.micOk;
+  // 更宽松的继续条件：至少有一个设备工作，或者用户明确想要跳过
+  const canContinue = dc.cameraOk || dc.micOk || dc.error !== null;
 
   const handleConfirm = () => {
     const getLabel = (list: MediaDeviceInfo[], id?: string) => list.find(d => d.deviceId === id)?.label;
@@ -31,10 +34,26 @@ const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip })
       selected_microphone_id: dc.selectedMicId,
       selected_microphone_label: getLabel(dc.microphones, dc.selectedMicId),
       constraints_used: {},
+      user_confirmed: true,
     };
-    dc.stop();
+    
+    // 将设备流保存到全局Context，不停止流
+    mediaStream.setStreams(dc.videoStream, dc.audioStream);
+    console.log('设备连接完成，流已保存到Context:', {
+      video: !!dc.videoStream,
+      audio: !!dc.audioStream
+    });
+    
     onComplete(results);
   };
+
+  // 页面卸载时不再清理设备流资源，流将保持到Context中
+  // 只在用户明确返回或取消时才清理
+  useEffect(() => {
+    return () => {
+      console.log('设备连接页面卸载，但保持流活跃状态');
+    };
+  }, []);
 
   const headerIcon = useMemo(() => (
     <div style={{
@@ -48,7 +67,7 @@ const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip })
       background: 'linear-gradient(135deg, #4F46E5 0%, #10B981 100%)',
       boxShadow: '0 8px 20px rgba(79, 70, 229, 0.25)'
     }}>
-      <SecurityScanOutlined style={{ color: '#fff', fontSize: 28 }} />
+      <WifiOutlined style={{ color: '#fff', fontSize: 28 }} />
     </div>
   ), []);
 
@@ -59,8 +78,8 @@ const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip })
           {/* 头部 */}
           <div style={{ textAlign: 'center', marginBottom: 8 }}>
             {headerIcon}
-            <Title level={3} style={{ margin: 0 }}>设备兼容性检测</Title>
-            <Text type="secondary">确认摄像头与麦克风可用（不会录制）</Text>
+            <Title level={3} style={{ margin: 0 }}>设备连接与验证</Title>
+            <Text type="secondary">建立摄像头与麦克风连接（设备将保持连接状态直到考试结束）</Text>
           </div>
 
           {/* 检测内容 */}
@@ -98,8 +117,10 @@ const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip })
                 minWidth: 180,
                 background: canContinue ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)' : undefined,
               }}
-            >确认设备正常，继续</Button>
-            {onSkip && <Button size="large" icon={<StepForwardOutlined />} onClick={() => { dc.stop(); onSkip(); }} style={{ borderRadius: 12, padding: '8px 20px', height: 'auto' }}>跳过检测</Button>}
+            >
+              {(dc.cameraOk || dc.micOk) ? '确认连接正常，保持连接' : '设备异常但仍要继续'}
+            </Button>
+            {onSkip && <Button size="large" icon={<StepForwardOutlined />} onClick={() => { onSkip(); }} style={{ borderRadius: 12, padding: '8px 20px', height: 'auto' }}>跳过连接</Button>}
           </div>
         </Card>
       </div>

@@ -62,6 +62,8 @@ app.use('/api/audio', (req, res, next) => {
 app.use(morgan('combined'));
 
 // 请求解析中间件
+// SDP 纯文本解析（WHIP/WHEP）
+app.use(express.text({ type: 'application/sdp', limit: '50kb' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -134,7 +136,7 @@ const validateConfiguration = async (): Promise<void> => {
   console.log(`📊 数据库: ${process.env.DATABASE_URL ? '✅' : '❌'} | JWT: ${process.env.JWT_SECRET ? '✅' : '❌'}`);
 
   // AI服务检查
-  const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:5000';
+  const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:5678';
   console.log(`🤖 AI服务: ${aiServiceUrl}`);
   
   try {

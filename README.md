@@ -100,7 +100,7 @@ docker-compose -p psychology-test-platform up -d
 
 ### 本地开发
 
-在启动服务之前，请先复制 `backend/.env.example` 为 `backend/.env`，并根据部署情况设置 `AI_SERVICE_URL`。若未设置，系统将默认使用 `http://localhost:5000`。
+在启动服务之前，请先复制 `backend/.env.example` 为 `backend/.env`，并根据部署情况设置 `AI_SERVICE_URL`。若未设置，系统将默认使用 `http://localhost:5678`。
 
 ```bash
 # 安装依赖

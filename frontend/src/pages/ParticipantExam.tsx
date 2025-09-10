@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { Card, Row, Col, FloatButton, BackTop, Progress, Typography, Avatar } from 'antd';
 import {
-  SendOutlined,
   MenuOutlined,
   BulbOutlined,
   ClockCircleOutlined,
   EyeOutlined,
 } from '@ant-design/icons';
+import { MediaStreamProvider } from '../contexts/MediaStreamContext';
 import type { Question } from '../types';
 import { useTimelineRecorder } from '../utils/timelineRecorder';
 import {
@@ -21,11 +21,12 @@ import {
   type ExamInfo,
   type ParticipantInfo,
   type ExamStep,
+  type ExamSubmissionManagerRef,
 } from '../components/ParticipantExam';
 import { gradientThemes, statusBarStyle, createTimerStyle } from '../components/ParticipantExam/ParticipantExam.styles';
 import '../components/ParticipantExam/ParticipantExam.animations.css';
 
-const ParticipantExam: React.FC = () => {
+const ParticipantExamContent: React.FC = () => {
   const { examUuid } = useParams<{ examUuid: string }>();
   const location = useLocation();
 
@@ -53,6 +54,19 @@ const ParticipantExam: React.FC = () => {
 
   const visibleQuestions = getVisibleQuestions();
 
+  // 离线提示与离开提醒
+  const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
+  useEffect(() => {
+    const goOnline = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+
   // 考试流程 Hook
   const {
     answers,
@@ -69,7 +83,15 @@ const ParticipantExam: React.FC = () => {
     stopTimer,
   } = useExamFlow(examUuid, visibleQuestions, timelineRecorder, () => {
     submissionManagerRef.current?.showSubmissionConfirm?.(true);
-  });
+  }, participantInfo);
+
+  // 已自动保存轻提示
+  const [justSaved, setJustSaved] = useState(false);
+  const onAnswerChangeWrapped = useCallback((questionId: string, value: any) => {
+    handleAnswerChange(questionId, value);
+    setJustSaved(true);
+    window.setTimeout(() => setJustSaved(false), 1500);
+  }, [handleAnswerChange]);
 
   // AI 与 WebRTC Hook
   const {
@@ -82,7 +104,8 @@ const ParticipantExam: React.FC = () => {
     disconnect,
   } = useAIWebRTC(timelineRecorder, currentQuestionIndex);
 
-  const submissionManagerRef = useRef<any>(null);
+  const submissionManagerRef = useRef<ExamSubmissionManagerRef>(null);
+  const questionTopRef = useRef<HTMLDivElement | null>(null);
 
   // 开始考试：初始化 AI 并启动流程
   const handleExamStart = useCallback(async () => {
@@ -113,6 +136,17 @@ const ParticipantExam: React.FC = () => {
     }
   }, [answers, timelineRecorder, disconnect, stopTimer]);
 
+  // 页面关闭/刷新提醒（仅在考试进行中）
+  useEffect(() => {
+    if (currentStep !== 'exam') return;
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [currentStep]);
+
   // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -142,10 +176,19 @@ const ParticipantExam: React.FC = () => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [currentStep, currentQuestionIndex, visibleQuestions.length, handleQuestionChange]);
 
+  // 切题滚动定位
+  useEffect(() => {
+    if (currentStep !== 'exam') return;
+    if (questionTopRef.current) {
+      questionTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // 适配固定头部的偏移
+      window.setTimeout(() => window.scrollBy({ top: -90, behavior: 'auto' }), 200);
+    }
+  }, [currentQuestionIndex, currentStep]);
+
   // 未进入考试主界面
   if (currentStep !== 'exam') {
     return (
-      <>
         <ExamStateManager
           currentStep={currentStep}
           setCurrentStep={setCurrentStep}
@@ -158,7 +201,6 @@ const ParticipantExam: React.FC = () => {
           onExamStart={handleExamStart}
           onDeviceTestComplete={handleDeviceTestComplete}
         />
-      </>
     );
   }
 
@@ -258,14 +300,25 @@ const ParticipantExam: React.FC = () => {
         </div>
       </div>
 
+      {/* 离线提示 */}
+      {isOffline && (
+        <div style={{
+          position: 'fixed', top: 64, left: 0, right: 0, zIndex: 1000,
+          background: 'rgba(255, 243, 205, 0.95)', borderBottom: '1px solid #F59E0B', color: '#92400e',
+          textAlign: 'center', padding: '8px 12px', fontSize: 12
+        }}>
+          网络连接异常，答案已本地保存，将自动重试提交。
+        </div>
+      )}
+
       <div
         style={{
-          paddingTop: 100,
+          paddingTop: isOffline ? 132 : 100,
           paddingBottom: 40,
           minHeight: '100vh',
         }}
       >
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px' }}>
+        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '0 24px' }}>
           <Row gutter={[24, 24]}>
             {/* 题目区域 */}
             <Col xs={24} lg={16}>
@@ -276,13 +329,14 @@ const ParticipantExam: React.FC = () => {
                   animation: questionTransition ? 'none' : 'questionSlide 0.3s ease-out',
                 }}
               >
+                <div ref={questionTopRef} />
                 {currentQuestion ? (
                   <QuestionRenderer
                     question={currentQuestion}
                     questionIndex={currentQuestionIndex}
                     totalQuestions={visibleQuestions.length}
                     answer={answers[currentQuestion.id]}
-                    onAnswerChange={handleAnswerChange}
+                    onAnswerChange={onAnswerChangeWrapped}
                     showAudioPlayer={true}
                     timelineRecorder={timelineRecorder}
                   />
@@ -316,6 +370,8 @@ const ParticipantExam: React.FC = () => {
                 showQuestionNav={showQuestionNav}
                 setShowQuestionNav={setShowQuestionNav}
                 onQuestionChange={handleQuestionChange}
+                onSubmitExam={() => submissionManagerRef.current?.showSubmissionConfirm?.(false)}
+                justSaved={justSaved}
               />
             </Col>
           </Row>
@@ -324,11 +380,6 @@ const ParticipantExam: React.FC = () => {
 
       {/* 浮动按钮 */}
       <FloatButton.Group trigger="click" type="primary" icon={<MenuOutlined />} tooltip="快捷操作">
-        <FloatButton
-          icon={<SendOutlined />}
-          tooltip="提交考试 (Ctrl+Enter)"
-          onClick={() => submissionManagerRef.current?.showSubmissionConfirm?.(false)}
-        />
         <FloatButton
           icon={<ClockCircleOutlined />}
           tooltip="显示/隐藏题目导航"
@@ -340,6 +391,14 @@ const ParticipantExam: React.FC = () => {
       {/* 回到顶部 */}
       <BackTop />
     </div>
+  );
+};
+
+const ParticipantExam: React.FC = () => {
+  return (
+    <MediaStreamProvider>
+      <ParticipantExamContent />
+    </MediaStreamProvider>
   );
 };
 

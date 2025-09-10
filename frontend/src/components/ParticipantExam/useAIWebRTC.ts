@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { enhancedPublicApi } from '../../services/enhancedPublicApi'; // 增强版公开API，带重试与降级
-import aiSessionWebRTC from '../../services/aiSessionWebRTC';
+import webrtcPublisher from '../../services/webrtcPublisher';
+import { webrtcApi } from '../../services/api/webrtcApi';
+import { useMediaStream } from '../../contexts/MediaStreamContext';
 import type { useTimelineRecorder } from '../../utils/timelineRecorder';
 import type { ParticipantInfo } from './ExamStateManager';
 
@@ -9,9 +11,12 @@ export const useAIWebRTC = (
   timelineRecorder: ReturnType<typeof useTimelineRecorder>,
   currentQuestionIndex: number
 ) => {
+  const mediaStream = useMediaStream();
+  
   // AI 服务可用性
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
   const [aiConfigLoading, setAiConfigLoading] = useState(false);
+  // 旧的直连AI WebRTC已移除，此处不再需要 websocketUrl
 
   // WebRTC 状态
   const [webrtcConnectionState, setWebrtcConnectionState] = useState<any>(null);
@@ -26,13 +31,17 @@ export const useAIWebRTC = (
         setAiConfigLoading(true);
         const res = await enhancedPublicApi.getAIServiceConfig();
         if (!mounted) return;
-        if (res.success && res.data) {
-          setAiAvailable(!!res.data.available);
+        if (res.success && (res as any).data) {
+          const payload: any = (res as any).data;
+          setAiAvailable(!!payload.available);
+          // 新方案不依赖 websocketUrl，这里仅用于展示可用性
         } else {
           setAiAvailable(false);
         }
       } catch {
-        if (mounted) setAiAvailable(false);
+        if (mounted) {
+          setAiAvailable(false);
+        }
       } finally {
         if (mounted) setAiConfigLoading(false);
       }
@@ -80,50 +89,80 @@ export const useAIWebRTC = (
     participantInfo: ParticipantInfo
   ) => {
     try {
+      // 记录用于后续停止
+      (window as any).__lastExamUuid = examUuid;
+      (window as any).__lastParticipantId = participantInfo.participantId;
       const aiSessionResult = await enhancedPublicApi.createAISession(examUuid, {
         participant_id: participantInfo.participantId,
         participant_name: participantInfo.participantName,
         started_at: new Date().toISOString()
       });
-      if (aiSessionResult.success && aiSessionResult.data?.aiSessionId) {
-        await aiSessionWebRTC.initialize(
-          {
-            sessionId: aiSessionResult.data.aiSessionId,
-            examId: examUuid,
-            examResultId: aiSessionResult.data.examResultId,
-            candidateId: participantInfo.participantId,
-          },
-          {
-            iceServers: [],
-            audio: true,
-            video: true,
-          },
-          {
-            onConnectionStateChange: handleWebRTCConnectionChange,
-            onError: handleWebRTCError,
-          }
-        );
-        console.log('AI session and WebRTC initialized successfully with sessionId:', aiSessionResult.data.aiSessionId);
+      if (aiSessionResult.success && aiSessionResult.data?.ai_session_id) {
+        // 统一新方案：通过 MediaMTX WHIP 推流
+        const { videoValid, audioValid } = mediaStream.validateStreams();
+        console.log('[WHIP] 使用设备连接中的流状态:', { videoValid, audioValid });
+        const startResp = await webrtcApi.startStream({ exam_uuid: examUuid, participant_id: participantInfo.participantId });
+        if (!startResp.success || !startResp.data) throw new Error(startResp.error || 'start stream failed');
+        await webrtcPublisher.start({
+          examUuid,
+          participantId: participantInfo.participantId,
+          streams: { video: mediaStream.videoStream, audio: mediaStream.audioStream },
+          maxBitrate: 6_000_000,
+          maxFramerate: 60,
+          // 使用H264以便 MediaMTX 通过RTSP提供可解码的视频给AI（OpenCV）
+          preferCodec: 'H264'
+        });
+        // 再次触发后端 /webrtc/start，确保 AI 端 RTSP 消费在推流已建立后也能成功（幂等）
+        try {
+          await webrtcApi.startStream({ exam_uuid: examUuid, participant_id: participantInfo.participantId });
+        } catch (e) {
+          console.warn('re-trigger /webrtc/start for RTSP consumer failed:', e);
+        }
+        console.log('[WHIP] 推流已连接:', startResp.data.streamName);
+        handleWebRTCConnectionChange({ status: 'connected' });
       } else {
         console.warn('AI session creation failed, continuing without AI analysis:', aiSessionResult.error);
       }
     } catch (error) {
       console.warn('AI session initialization failed, continuing in degraded mode:', error);
     }
-  }, [handleWebRTCConnectionChange, handleWebRTCError]);
+  }, [handleWebRTCConnectionChange, mediaStream]);
 
   // 断开连接
   const disconnect = useCallback(async () => {
     try {
-      await aiSessionWebRTC.disconnect();
+      await webrtcPublisher.stop();
+      const eu = (window as any).__lastExamUuid;
+      const pid = (window as any).__lastParticipantId;
+      if (eu && pid) {
+        try {
+          await fetch('/api/webrtc/stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ exam_uuid: eu, participant_id: pid })
+          });
+        } catch {}
+      }
+      // AI会话结束后，流的生命周期由顶层组件管理
+      console.log('AI session disconnected, streams remain in context');
     } catch (error) {
       console.warn('Error during disconnect:', error);
     }
   }, []);
 
-  // 页面卸载时断开连接
+  // 页面卸载时断开连接（流的清理由顶层MediaStreamProvider处理）
   useEffect(() => {
-    const handleUnload = () => { aiSessionWebRTC.disconnect().catch(console.error); };
+    const handleUnload = () => { 
+      webrtcPublisher.stop().catch(console.error);
+      try {
+        const eu = (window as any).__lastExamUuid;
+        const pid = (window as any).__lastParticipantId;
+        if (eu && pid && 'sendBeacon' in navigator) {
+          const blob = new Blob([JSON.stringify({ exam_uuid: eu, participant_id: pid })], { type: 'application/json' });
+          navigator.sendBeacon('/api/webrtc/stop', blob);
+        }
+      } catch {}
+    };
     window.addEventListener('beforeunload', handleUnload);
     window.addEventListener('pagehide', handleUnload);
     return () => {

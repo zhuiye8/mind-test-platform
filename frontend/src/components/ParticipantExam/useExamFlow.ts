@@ -2,12 +2,19 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Question } from '../../types';
 import { useTimelineRecorder } from '../../utils/timelineRecorder';
 
+// 参与者信息类型
+interface ParticipantInfo {
+  participantId: string;
+  participantName: string;
+}
+
 // 考试流程管理 Hook
 export const useExamFlow = (
   examUuid: string | undefined,
   visibleQuestions: Question[],
   timelineRecorder: ReturnType<typeof useTimelineRecorder>,
-  onTimeUp: () => void
+  onTimeUp: () => void,
+  participantInfo: ParticipantInfo | null = null
 ) => {
   // 答案与题目索引
   const [answers, setAnswers] = useState<Record<string, any>>({});
@@ -41,14 +48,40 @@ export const useExamFlow = (
     }, 1000);
   }, [visibleQuestions, timelineRecorder, onTimeUp]);
 
+  // 生成localStorage键值（包含参与者ID避免答案污染）
+  const getStorageKey = useCallback(() => {
+    if (!examUuid || !participantInfo?.participantId) return null;
+    return `exam_answers_${examUuid}_${participantInfo.participantId}`;
+  }, [examUuid, participantInfo]);
+
+  // 清理旧的污染缓存（仅基于examUuid的旧格式键值）
+  const clearContaminatedCache = useCallback(() => {
+    if (!examUuid) return;
+    
+    try {
+      // 清理旧的不包含participantId的键值
+      const oldKey = `exam_answers_${examUuid}`;
+      if (localStorage.getItem(oldKey)) {
+        console.log(`清理旧的污染缓存: ${oldKey}`);
+        localStorage.removeItem(oldKey);
+      }
+    } catch (error) {
+      console.warn('清理污染缓存失败:', error);
+    }
+  }, [examUuid]);
+
   // 答案变化
   const handleAnswerChange = useCallback((questionId: string, value: any) => {
     setAnswers(prev => {
       const previousAnswer = prev[questionId];
       const newAnswers = { ...prev, [questionId]: value };
-      if (examUuid) {
-        localStorage.setItem(`exam_answers_${examUuid}`, JSON.stringify(newAnswers));
+      
+      // 使用包含参与者ID的键值存储答案
+      const storageKey = getStorageKey();
+      if (storageKey) {
+        localStorage.setItem(storageKey, JSON.stringify(newAnswers));
       }
+      
       if (previousAnswer === undefined || previousAnswer === null || previousAnswer === '') {
         timelineRecorder.recordOptionSelect(questionId, String(value), 'click');
       } else {
@@ -56,7 +89,7 @@ export const useExamFlow = (
       }
       return newAnswers;
     });
-  }, [examUuid, timelineRecorder]);
+  }, [getStorageKey, timelineRecorder]);
 
   // 题目切换
   const handleQuestionChange = useCallback((newIndex: number) => {
@@ -75,19 +108,28 @@ export const useExamFlow = (
     }, 150);
   }, [currentQuestionIndex, visibleQuestions, timelineRecorder]);
 
-  // 恢复答案
+  // 恢复答案（使用参与者隔离的键值）
   useEffect(() => {
-    if (examUuid) {
-      const saved = localStorage.getItem(`exam_answers_${examUuid}`);
+    const storageKey = getStorageKey();
+    if (storageKey) {
+      // 清理旧的污染缓存
+      clearContaminatedCache();
+      
+      // 加载当前参与者的答案
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
         try {
-          setAnswers(JSON.parse(saved));
-        } catch {
-          // 忽略解析错误
+          const parsedAnswers = JSON.parse(saved);
+          console.log(`恢复参与者 ${participantInfo?.participantId} 的答案:`, Object.keys(parsedAnswers).length, '个');
+          setAnswers(parsedAnswers);
+        } catch (error) {
+          console.warn('解析已保存答案失败:', error);
+          // 清理损坏的缓存
+          localStorage.removeItem(storageKey);
         }
       }
     }
-  }, [examUuid]);
+  }, [getStorageKey, clearContaminatedCache, participantInfo]);
 
   // 组件卸载时清理定时器
   useEffect(() => {

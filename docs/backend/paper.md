@@ -8,12 +8,13 @@
 - **scales表**: id, paperId, scaleName, scaleOrder (量表维度)
 - **questions表**: 关联的题目数据
 
-## 主要接口
-- `POST /api/teacher/papers` → `{id, title, description, question_count, created_at}`
-- `GET /api/teacher/papers` → `Paper[]` (包含question_count, exam_count统计)
-- `GET /api/teacher/papers/:id` → `{paperDetail + questions[]}`
-- `PUT /api/teacher/papers/:id` → 更新后试卷信息
-- `DELETE /api/teacher/papers/:id` → 删除结果确认
+## 主要接口（与路由实现同步）
+- `POST /api/teacher/papers` → 创建 `{ id, title, description, created_at }`
+- `GET /api/teacher/papers` → 列表 `Paper[]`（含 `_count.questions/_count.exams`）
+- `GET /api/teacher/papers/:paper_id` → 详情（可联查题目）
+- `PUT /api/teacher/papers/:paper_id` → 更新
+- `DELETE /api/teacher/papers/:paper_id` → 删除（含“有关联考试不可删”的约束）
+- 题目/批量/条件/计分/音频等请见《question.md》《audio.md》
 
 ## 核心功能
 - 试卷CRUD操作（标题、描述）

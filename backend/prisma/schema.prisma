@@ -374,9 +374,10 @@ model AiSession {
   id               String        @id @default(uuid())
   examId           String?
   examResultId     String?
+  participant_id   String?
   station_id       String?
   room_id          String?
-  started_at       DateTime
+  started_at       DateTime      @default(now())
   ended_at         DateTime?
   status           SessionStatus @default(ACTIVE)
   ai_version       String?

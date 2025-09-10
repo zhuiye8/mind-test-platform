@@ -8,6 +8,8 @@ import { sendSuccess, sendError } from '../../utils/response';
 import { SubmitExamRequest, ExamStatus } from '../../types';
 import prisma from '../../utils/database';
 import { aiAnalysisService } from '../../services/aiAnalysis';
+import { stopAIConsumerForStream } from '../../services/webrtcStreamService';
+import { generateStreamName } from '../../utils/streamName';
 import { calculateScore } from './utils';
 import { processTimelineData } from '../../services/timelineParserService';
 
@@ -37,6 +39,7 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
       where: { publicUuid },
       select: {
         id: true,
+        publicUuid: true,
         paperId: true,
         title: true,
         status: true,
@@ -121,7 +124,13 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
         device_test_results
       );
 
-      // 检查是否有AI服务警告
+    // 提交完成后，尽量停止 AI RTSP 消费（容错）
+    try {
+      const streamName = generateStreamName(publicUuid, participant_id);
+      stopAIConsumerForStream(streamName).catch(() => {});
+    } catch {}
+
+    // 检查是否有AI服务警告
       const response: any = {
         result_id: result.id,
         score,

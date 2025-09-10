@@ -12,12 +12,30 @@
 - **question_audio表**: questionId, audioFile, duration, generatedAt
 - **scales表**: 量表维度关联
 
-## 主要接口
-- `POST /api/teacher/papers/:paperId/questions` → `{question创建结果}`
-- `PUT /api/teacher/questions/:questionId` → 题目更新结果
-- `DELETE /api/teacher/questions/:questionId` → 删除确认
-- `POST /api/teacher/questions/batch-create` → 批量创建结果
-- `POST /api/teacher/papers/:paperId/audio/generate` → 音频生成任务
+## 主要接口（与路由实现同步）
+- 题目 CRUD
+  - `POST /api/teacher/papers/:paperId/questions`：创建题目
+  - `GET /api/teacher/papers/:paperId/questions`：获取试卷下题目
+  - `PUT /api/teacher/papers/questions/:questionId`：更新题目
+  - `DELETE /api/teacher/papers/questions/:questionId`：删除题目
+- 题目批量
+  - `POST /api/teacher/papers/:paperId/questions/batch-create`：批量创建
+  - `PUT /api/teacher/papers/questions/batch-update`：批量更新
+  - `DELETE /api/teacher/papers/questions/batch-delete`：批量删除
+  - `POST /api/teacher/papers/:paperId/questions/batch-import`：批量导入
+  - `PUT /api/teacher/papers/:paperId/questions/batch-reorder`：批量排序
+- 条件逻辑/依赖
+  - `GET /api/teacher/papers/:paperId/questions/dependencies`：依赖关系图
+  - `GET /api/teacher/papers/condition-templates`：条件模板
+  - `POST /api/teacher/papers/:paperId/condition-preview`：预览条件逻辑
+  - `PUT /api/teacher/papers/conditions/batch-set`：批量设置条件逻辑
+  - `GET /api/teacher/papers/:paperId/conditions/export`：导出条件配置
+  - `POST /api/teacher/papers/:paperId/conditions/import`：导入条件配置
+- 计分管理
+  - `POST /api/teacher/papers/:paperId/batch-scoring`：批量设置计分
+  - `POST /api/teacher/papers/:paperId/batch-scoring/preview`：预览批量计分
+- 音频相关（详见 audio 模块）
+  - `POST /api/audio/papers/:paperId/batch-generate`，`GET /api/audio/papers/:paperId/status` 等
 
 ## 核心功能
 - 题目CRUD操作（单个和批量）
@@ -36,3 +54,7 @@
 - 音频生成集成百度TTS服务
 - 字段转换：API响应经过fieldConverter处理，camelCase转换为snake_case
 - 批量计分响应字段：`updated_questions`和`total_questions`（经过snake_case转换）
+
+## 字段映射（数据库）
+- questions：`id, paperId, scaleId, questionOrder, title, options(JSON), questionType, displayCondition(JSON), scoreValue, isScored`
+- 依赖关系图/条件逻辑操作以 `paperId` 维度组织；排序/批处理均基于 `questionOrder`

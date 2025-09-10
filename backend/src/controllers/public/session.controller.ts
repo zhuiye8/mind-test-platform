@@ -124,7 +124,7 @@ export const retryAISession = async (req: Request, res: Response): Promise<void>
 // 创建AI分析会话
 export const createAISession = async (req: Request, res: Response): Promise<void> => {
   const { publicUuid } = req.params;
-  const { participant_id, participant_name, started_at } = req.body;
+  const { participant_id, participant_name } = req.body;
   
   // 参数验证
   if (!participant_id || !participant_name) {
@@ -179,42 +179,15 @@ export const createAISession = async (req: Request, res: Response): Promise<void
     });
 
     if (existingResult) {
-      // 检查是否真的已经提交（submittedAt不是初始值1970-01-01）
-      const initialDate = new Date('1970-01-01').getTime();
-      const submittedTime = existingResult.submittedAt.getTime();
-      
-      if (submittedTime !== initialDate) {
-        // 确实已经提交过，拒绝重新开始
-        sendError(res, '您已经提交过本次考试，无法重新开始', 409);
-        return;
-      }
-      
-      // 未提交的记录，清理旧记录允许重新开始
-      console.log(`🔄 清理学生 ${participant_name}(${participant_id}) 的未完成考试记录: ${existingResult.id}`);
-      await prisma.examResult.delete({
-        where: { id: existingResult.id }
-      });
+      // 如果已经有提交记录，拒绝重新开始
+      sendError(res, '您已经提交过本次考试，无法重新开始', 409);
+      return;
     }
 
-    // 获取客户端IP地址
-    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
-    
     // 检查AI服务是否为必需（可通过环境变量配置）
     const isAIRequired = process.env.AI_REQUIRED === 'true';
     
-    // 准备考试记录数据
-    const examResultData = {
-      examId: exam.id,
-      participantId: participant_id,
-      participantName: participant_name,
-      answers: {}, // 初始为空，提交时更新
-      score: 0, // 初始为0，提交时更新
-      ipAddress,
-      startedAt: started_at ? new Date(started_at) : now,
-      submittedAt: new Date('1970-01-01'), // 使用特殊时间戳标记未提交状态
-    };
-
-    await handleAISessionCreation(req, res, exam, participant_id, participant_name, examResultData, isAIRequired);
+    await handleAISessionCreation(req, res, exam, participant_id, participant_name, isAIRequired);
       
   } catch (error: any) {
     console.error('创建考试会话失败 (最外层错误):', {
@@ -253,14 +226,13 @@ export const createAISession = async (req: Request, res: Response): Promise<void
   }
 };
 
-// AI会话创建处理逻辑
+// AI会话创建处理逻辑（重构版：不创建ExamResult记录）
 async function handleAISessionCreation(
   _req: Request, 
   res: Response, 
   exam: any, 
   participant_id: string, 
   participant_name: string, 
-  examResultData: any, 
   isAIRequired: boolean
 ): Promise<void> {
   try {
@@ -286,26 +258,14 @@ async function handleAISessionCreation(
       };
     }
 
-    // 第二步：根据AI服务状态创建考试记录
-    let examResult;
-    let aiSessionId = null;
-
+    // 根据AI服务状态决定是否允许考试继续
     if (aiResult.success) {
-      // AI服务正常，创建包含AI会话ID的考试记录
       console.log(`✅ AI会话创建成功: ${aiResult.sessionId}`);
-      examResult = await prisma.examResult.create({
-        data: {
-          ...examResultData,
-          aiSessionId: aiResult.sessionId || null, // 保存AI会话ID，确保类型正确
-        },
-      });
-      aiSessionId = aiResult.sessionId || null;
-      
       console.log(`✅ 学生 ${participant_name}(${participant_id}) 开始考试 ${exam.title}，完整AI功能已启用`);
       
       sendSuccess(res, {
-        examResultId: examResult.id,
-        aiSessionId: aiSessionId,
+        examResultId: null, // 不再提前创建ExamResult，等提交时再创建
+        aiSessionId: aiResult.sessionId,
         message: 'AI分析会话创建成功，考试开始',
       }, 201);
       
@@ -319,17 +279,10 @@ async function handleAISessionCreation(
       } else {
         // AI为可选服务，失败时仍可考试（无AI功能）
         console.warn(`⚠️ AI服务失败但继续考试: ${aiResult.error}`);
-        examResult = await prisma.examResult.create({
-          data: {
-            ...examResultData,
-            aiSessionId: null, // AI服务失败，无会话ID
-          },
-        });
-        
         console.log(`⚠️ 学生 ${participant_name}(${participant_id}) 开始考试 ${exam.title}，AI功能不可用`);
         
         sendSuccess(res, {
-          examResultId: examResult.id,
+          examResultId: null, // 不提前创建ExamResult
           aiSessionId: null,
           message: 'AI分析服务暂时不可用，但可以正常参加考试',
           warning: aiResult.error,
@@ -346,25 +299,8 @@ async function handleAISessionCreation(
       examId: exam?.id
     });
     
-    // 处理数据库唯一约束错误
-    if (error.code === 'P2002') {
-      // 检查约束字段，确保是examId_participantId约束
-      const constraintFields = error.meta?.target || [];
-      console.log('唯一约束冲突详情:', {
-        target: constraintFields,
-        participantId: participant_id,
-        examId: exam?.id
-      });
-      
-      if (constraintFields.includes('examId') && constraintFields.includes('participantId')) {
-        // 确实是重复提交约束
-        sendError(res, '您已开始过本次考试，请勿重复开始', 409);
-      } else {
-        // 其他约束冲突
-        sendError(res, '数据创建冲突，请稍后重试', 500);
-      }
-      return;
-    }
+    // 由于不再创建ExamResult，不会有P2002约束错误
+    // 其他错误直接抛出
     throw error;
   }
 }

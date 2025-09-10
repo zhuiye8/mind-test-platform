@@ -42,8 +42,8 @@ export const publicApi = {
     participant_name: string;
     started_at?: string; // 考试开始时间（ISO格式）
   }): Promise<ApiResponse<{
-    examResultId: string | null;
-    aiSessionId: string | null;
+    exam_result_id: string | null;
+    ai_session_id: string | null;
     message: string;
     warning?: string;
   }>> => {
@@ -55,8 +55,8 @@ export const publicApi = {
     participant_id: string;
     participant_name: string;
   }): Promise<ApiResponse<{
-    examResultId: string | null;
-    aiSessionId: string | null;
+    exam_result_id: string | null;
+    ai_session_id: string | null;
     message: string;
     warning?: string;
   }>> => {

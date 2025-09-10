@@ -1,7 +1,7 @@
 /**
 
  * AI分析服务主类 - 重构版本
- * 对接外部AI服务 (默认 http://localhost:5000)
+ * 对接外部AI服务 (默认 http://localhost:5678)
  * 
  * 工作流程：
  * 1. 学生开始考试时：创建AI分析会话 (create_session)
