@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时情绪分析系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- 模型加载遮罩层 -->
+    <div id="model-loading-overlay" class="model-loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h2 class="loading-title">正在加载AI模型</h2>
+            <p class="loading-subtitle" id="loading-subtitle">系统初始化中，请稍候...</p>
+            <div class="loading-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <span class="progress-text" id="progress-text">0%</span>
+            </div>
+            <div class="loading-tips">
+                <p><i class="fas fa-info-circle"></i> 首次启动需要加载AI模型，约需15-30秒</p>
+                <p><i class="fas fa-brain"></i> 正在准备语音和面部情绪分析功能</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 背景粒子效果 -->
+    <div id="particles-container"></div>
+
+    <!-- 主容器 -->
+    <div class="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-brain"></i>
+                <span class="logo-text">实时情绪分析系统</span>
+            </div>
+            <!-- 模式切换 -->
+            <div class="mode-selector">
+                <button class="mode-btn active" id="local-mode-btn" data-mode="local">
+                    <i class="fas fa-desktop"></i> 本地检测
+                </button>
+                <button class="mode-btn" id="monitor-mode-btn" data-mode="monitor">
+                    <i class="fas fa-users"></i> 学生监控
+                </button>
+            </div>
+            <div class="header-actions">
+                <button class="btn-outline" id="save-record-btn" disabled>
+                    <i class="fas fa-save"></i> 保存记录
+                </button>
+                <button class="btn-outline" id="clear-history-btn">
+                    <i class="fas fa-trash-alt"></i> 清除历史
+                </button>
+                <button class="btn-outline" id="detection-records-btn" title="查看检测记录">
+                    <i class="fas fa-database"></i> 检测记录
+                </button>
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span id="connection-status">系统在线</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主要内容区域 -->
+        <main class="main-content">
+            <!-- 左侧控制面板 - 本地模式 -->
+            <div class="control-panel" id="local-control-panel">
+                <div class="panel-section panel-stretch">
+                    <h3><i class="fas fa-upload"></i> 视音频上传分析</h3>
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>点击此处上传视音频文件</p>
+                            <input type="file" id="fileUpload" accept="video/*,audio/*" hidden>
+                            <button class="btn-primary" onclick="document.getElementById('fileUpload').click()">
+                                选择文件
+                            </button>
+                        </div>
+                        <div class="upload-status" id="uploadStatus" style="display: none;">
+                            <div class="status-icon">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </div>
+                            <div class="status-text">正在处理视频...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3 class="camera-title"><i class="fas fa-video"></i> 实时分析</h3>
+                    <div class="camera-controls">
+                        <button class="btn-secondary" id="startCameraMic">
+                            <i class="fas fa-play"></i> 启动摄像头麦克风
+                        </button>
+                        <button class="btn-danger" id="stopDetection" disabled>
+                            <i class="fas fa-stop"></i> 停止检测
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 综合情绪评估 -->
+                <div class="panel-section panel-stretch">
+                    <h3 class="evaluation-title"><i class="fas fa-chart-pie"></i> 综合情绪评估</h3>
+                    <div class="comprehensive-result">
+                        <div class="emotion-summary">
+                            <div class="summary-item">
+                                <span class="summary-label">整体情绪:</span>
+                                <span class="summary-value" id="overallEmotion">--</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">情绪强度:</span>
+                                <span class="summary-value" id="emotionIntensity">--</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">分析时长:</span>
+                                <span class="summary-value" id="analysisTime">00:00</span>
+                            </div>
+                        </div>
+                        <div class="emotion-indicator">
+                            <div class="indicator-circle" id="emotionIndicator">
+                                <span id="emotionIcon">😐</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 左侧控制面板 - 学生监控模式 -->
+            <div class="control-panel" id="monitor-control-panel" style="display: none;">
+                <div class="panel-section">
+                    <h3><i class="fas fa-users"></i> 学生监控</h3>
+                    <div class="monitor-controls">
+                        <div class="monitor-status">
+                            <div class="status-item">
+                                <span class="status-label">在线学生:</span>
+                                <span class="status-value" id="onlineStudents">0</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">活跃会话:</span>
+                                <span class="status-value" id="activeSessions">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 学生列表 -->
+                <div class="panel-section panel-stretch">
+                    <div class="section-header">
+                        <h3><i class="fas fa-list"></i> 学生列表</h3>
+                        <button class="btn-refresh" id="refreshStudents" title="刷新学生列表">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="student-list-container">
+                        <div class="student-list" id="studentList">
+                            <div class="no-students">
+                                <i class="fas fa-user-slash"></i>
+                                <p>暂无在线学生</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 当前监控学生信息 -->
+                <div class="panel-section">
+                    <h3><i class="fas fa-eye"></i> 当前监控</h3>
+                    <div class="current-student" id="currentStudentInfo">
+                        <div class="student-info">
+                            <div class="info-item">
+                                <span class="info-label">学生ID:</span>
+                                <span class="info-value" id="currentStudentId">--</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">考试ID:</span>
+                                <span class="info-value" id="currentExamId">--</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">连接时长:</span>
+                                <span class="info-value" id="connectionDuration">--</span>
+                            </div>
+                        </div>
+                        <button class="btn-warning" id="disconnectStudent" disabled>
+                            <i class="fas fa-unlink"></i> 断开连接
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中央显示区域 -->
+            <div class="display-area">
+                <!-- 视频显示 -->
+                <div class="video-container">
+                    <video id="video-preview" autoplay muted playsinline style="display: none;"></video>
+                    <canvas id="video-canvas" style="display: none;"></canvas>
+
+                    <!-- 检测结果覆盖层 -->
+                    <div class="detection-overlay" id="detectionOverlay">
+                        <div class="face-detection-status" id="faceDetectionStatus">
+                            <i class="fas fa-search"></i>
+                            <span>等待开始分析...</span>
+                        </div>
+                        <!-- PPG心率检测显示框 -->
+                        <div class="heart-rate-display" id="heartRateDisplay">
+                            <div class="heart-rate-content">
+                                <i class="fas fa-heartbeat" id="heartRateIcon"></i>
+                                <span id="heartRateValue">--</span>
+                                <span class="heart-rate-unit">bpm</span>
+                            </div>
+                            <div class="heart-rate-progress" id="heartRateProgress" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill"></div>
+                                </div>
+                                <span class="progress-text" id="progressText">等待检测人脸</span>
+                            </div>
+                        </div>
+                        <div class="face-box" id="faceBox"></div>
+                        <div class="detection-info">
+                            <div class="audio-visualizer">
+                                <canvas id="audio-canvas"></canvas>
+                                <div class="audio-info">
+                                    <span><i class="fas fa-microphone"></i> 音频输入</span>
+                                    <div class="audio-status-container">
+                                        <div id="audio-status-indicator" class="audio-status-indicator"></div>
+                                        <div id="audio-level" class="audio-level">
+                                            <span class="volume-text">0.0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 情绪趋势图表 -->
+                <div class="chart-section">
+                    <h4><i class="fas fa-chart-line"></i> 情绪变化趋势</h4>
+                    <canvas id="emotion-trend-chart"></canvas>
+                    <div class="trend-controls">
+                        <label>
+                            <input type="checkbox" id="show-audio-trend" checked>
+                            <i class="fas fa-microphone"></i> 语音情绪
+                        </label>
+                        <label>
+                            <input type="checkbox" id="show-video-trend" checked>
+                            <i class="fas fa-video"></i> 面部情绪
+                        </label>
+                        <button id="clear-trend" class="btn-small">
+                            <i class="fas fa-trash"></i> 清空
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧分析面板 -->
+            <div class="analysis-panel">
+                <!-- 面部情绪分析结果 -->
+                <div class="result-section">
+                    <h3><i class="fas fa-video"></i> 面部情绪分析</h3>
+                    <div class="emotion-chart-container">
+                        <canvas id="video-emotion-chart"></canvas>
+                    </div>
+                    <div class="result-display" id="videoResultDisplay">
+                        <div class="result-item">
+                            <span class="result-label">主要情绪:</span>
+                            <span class="result-value" id="videoDominantEmotion">--</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">检测状态:</span>
+                            <span class="result-status" id="videoDetectionStatus">待检测</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 语音情绪分析结果 -->
+                <div class="result-section">
+                    <h3><i class="fas fa-microphone"></i> 语音情绪分析</h3>
+                    <div class="emotion-chart-container">
+                        <canvas id="audio-emotion-chart"></canvas>
+                    </div>
+                    <div class="result-display" id="audioResultDisplay">
+                        <div class="result-item">
+                            <span class="result-label">主要情绪:</span>
+                            <span class="result-value" id="audioDominantEmotion">--</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">检测状态:</span>
+                            <span class="result-status" id="audioDetectionStatus">待检测</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p>AI模型加载中...</p>
+        </div>
+    </div>
+
+    <!-- 通知系统 -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <!-- 错误提示 -->
+    <div id="error-message" class="error-message" style="display: none;">
+        <span class="error-text"></span>
+        <button class="error-close">&times;</button>
+    </div>
+
+    <!-- 删除学生确认弹窗 -->
+    <div id="confirmDialogOverlay" class="confirm-dialog-overlay">
+        <div class="confirm-dialog">
+            <h3><i class="fas fa-exclamation-triangle"></i> 确认操作</h3>
+            <p id="confirmDialogMessage">确定要断开与学生的连接吗？</p>
+            <div class="confirm-dialog-buttons">
+                <button class="btn-secondary" id="confirmDialogCancel">取消</button>
+                <button class="btn-danger" id="confirmDialogConfirm"><i class="fas fa-unlink"></i> 确定断开</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+    <!-- 备用加载遮罩隐藏脚本 -->
+    <script>
+        // 确保加载遮罩在3秒后一定会被隐藏
+        setTimeout(function() {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay && loadingOverlay.style.display !== 'none') {
+                loadingOverlay.style.display = 'none';
+                console.log('备用脚本隐藏了加载遮罩');
+            }
+        }, 3000);
+    </script>
+</body>
+</html>

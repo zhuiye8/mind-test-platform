@@ -83,8 +83,8 @@ logs/
 tmp/
 temp/
 
-# Local debug logs in repo root
-log*.md
+# Local debug logs
+# log*.md
 
 ### OS / Editor ###
 .DS_Store
@@ -109,13 +109,14 @@ Thumbs.db
 
 ### Project-specific (emotion AI service) ###
 # Keep code, ignore heavy runtime artifacts
-emotion/data/
+emotion/data*
 emotion/static/uploads/
 emotion/app_errors.log
 emotion/models/deepface_models/
 emotion/models/emotion2vec_models/
 emotion/models/**/checkpoints/
 emotion/models/**/weights/
+emotion/*.txt
 
 ### WebRTC demo / MediaMTX artifacts ###
 webrtc-demo/mediamtx/mediamtx.log

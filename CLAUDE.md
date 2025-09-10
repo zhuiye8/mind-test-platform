@@ -208,16 +208,24 @@ The system includes a sophisticated AI analysis pipeline:
 - **Data Channel**: Streams video/audio to Python AI service in real-time
 - **Socket.IO Events**: Bidirectional communication for analysis status and results
 - **Session Lifecycle**: Create → Analyze → Finalize → Cleanup workflow
+- **WHIP/WHEP Protocol**: Standards-compliant WebRTC streaming via MediaMTX server
+- **Quality Control**: Dynamic bitrate management with degradation preference for maintaining resolution
 
-### AI Data Flow (Updated Architecture)
+### AI Data Flow (Current Architecture)
 1. Student enters device connection page → Media streams established and validated
 2. Streams saved to MediaStreamContext → Maintained across navigation
 3. Student starts exam → WebRTC connection reuses existing streams (no re-permission)
-4. Video/audio streamed via data channel to AI service immediately upon exam start
+4. Video/audio streamed via WHIP to MediaMTX server → Forwarded to AI service via RTSP
 5. AI service performs real-time analysis (emotion, attention, PPG)
 6. Results aggregated and sent to backend via API calls
 7. Teacher views analysis reports and raw data
 8. Exam completion → Streams cleaned up by MediaStreamProvider
+
+### WebRTC Quality Management
+- **Encoding Parameters**: Must be configured BEFORE `createOffer()` to be included in SDP negotiation
+- **Bitrate Control**: Uses `RTCRtpSender.setParameters()` with maxBitrate (6-8 Mbps for 1080p60)
+- **Resolution Preference**: `degradationPreference: 'maintain-resolution'` prioritizes video quality
+- **Codec Selection**: Automatic VP8/H.264 preference with proper packetization-mode handling
 
 ### 音频功能架构
 - **WebRTC音频流**: 传输学生答题时的音频给AI服务进行情绪分析
@@ -241,6 +249,13 @@ The system includes a sophisticated AI analysis pipeline:
 3. Setup database: `cd backend && npm run db:push && npm run db:seed`
 4. Start services: `npm run dev` in both backend/ and frontend/
 
+### WebRTC Development Setup (Optional)
+For WebRTC streaming testing, additional MediaMTX server setup is required:
+1. Download MediaMTX v1.14.0+ from GitHub releases
+2. Configure `mediamtx.yml` for WebRTC endpoints (ports 8889/8189)
+3. Start MediaMTX: `./mediamtx` (no flags needed)
+4. AI service connects via RTSP for video analysis
+
 ### Testing Strategy
 - **Backend**: Jest unit tests for utilities and services
 - **Database**: Transaction testing with rollback scenarios
@@ -252,6 +267,7 @@ The system includes a sophisticated AI analysis pipeline:
 - **Caching Strategy**: Multi-layer Redis with automatic fallback
 - **Connection Pooling**: PostgreSQL and Redis connection management
 - **Memory Management**: Timer cleanup and stream lifecycle management
+- **WebRTC Optimization**: Proper encoding parameter timing to prevent quality degradation
 
 ### Current Architecture Strengths
 - **Modular Design**: Clean separation between exam management and AI analysis
@@ -259,3 +275,16 @@ The system includes a sophisticated AI analysis pipeline:
 - **Reliability**: Comprehensive error handling and resource cleanup
 - **Security**: XSS prevention, authentication, and input validation
 - **Developer Experience**: Strong typing with TypeScript throughout
+- **Standards Compliance**: WHIP/WHEP protocols for WebRTC interoperability
+
+## Critical WebRTC Development Notes
+
+### Encoding Parameter Timing ⚠️
+- **MUST** call `setParameters()` BEFORE `createOffer()` - after SDP negotiation is too late
+- WebRTC bandwidth estimation relies on initial SDP constraints
+- Quality degradation occurs when parameters are set after answer/offer exchange
+
+### Common WebRTC Pitfalls
+- Setting maxBitrate after `setRemoteDescription()` has no effect on negotiated bandwidth
+- `voiceActivityDetection` is not a valid `RTCOfferOptions` property
+- React 18+ JSX Transform: Remove explicit `import React` statements in components
