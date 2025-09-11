@@ -4,9 +4,22 @@
 """
 
 from flask import Flask, render_template, request, jsonify, Response
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room, rooms
 from flask_cors import CORS
 import os
+# 加载.env文件中的环境变量
+from pathlib import Path
+env_path = Path(__file__).parent / '.env'
+if env_path.exists():
+    with open(env_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ.setdefault(key.strip(), value.strip())
+    print(f"[配置] 已加载环境变量文件: {env_path}")
+else:
+    print(f"[配置] 环境变量文件不存在: {env_path}")
 import json
 import uuid
 import base64
@@ -25,7 +38,7 @@ from models.model_manager import model_manager
 # 导入契约API适配层
 from contract_api import contract_bp, set_callback_config
 # 新方案：RTSP 消费管理器（拉取 MediaMTX 流）
-from rtsp_consumer import RTSPConsumerManager, set_socketio as set_rtsp_socketio, set_session_mapper as set_rtsp_session_mapper
+from rtsp_consumer import RTSPConsumerManager, set_socketio as set_rtsp_socketio, set_session_mapper as set_rtsp_session_mapper, get_latest_state
 import requests
 # 导入WebRTC信令处理器
 # from webrtc_signaling import WebRTCSignalingHandler  # 历史方案（已停用）
@@ -72,22 +85,33 @@ socketio = SocketIO(app,
 # 初始化组件
 data_manager = DataManager()
 websocket_handler = WebSocketHandler(socketio)
-# 初始化 RTSP 消费管理器
-set_rtsp_socketio(socketio)
+# 初始化 RTSP 消费管理器 - 传递app实例以支持应用上下文
+set_rtsp_socketio(socketio, app)
 rtsp_manager = RTSPConsumerManager(model_manager)
 # 运行期绑定：stream_name -> { session_id, student_id }
 _manual_stream_bindings = {}
+_sid_registry = {}  # monitor_sid -> default_sid
 def _map_stream_to_session(stream_name: str):
     # 根据 stream_name 反查学生会话
     try:
         # 1) 先查手动绑定
         b = _manual_stream_bindings.get(stream_name)
         if b:
-            return { 'session_id': b.get('session_id'), 'student_id': b.get('student_id') }
+            return {
+                'session_id': b.get('session_id'),
+                'student_id': b.get('student_id'),
+                'sid_default': b.get('sid_default'),
+                'sid_monitor': b.get('sid_monitor'),
+            }
         # 2) 再查 student_sessions
         for sid, s in student_sessions.items():
             if s.get('stream_name') == stream_name:
-                return { 'session_id': sid, 'student_id': s.get('student_id') }
+                return {
+                    'session_id': sid,
+                    'student_id': s.get('student_id'),
+                    'sid_default': None,
+                    'sid_monitor': None,
+                }
     except Exception:
         pass
     return None
@@ -101,10 +125,33 @@ def bind_stream_to_session():
         stream_name = data.get('stream_name')
         session_id = data.get('session_id')
         student_id = data.get('student_id')
+        sid_monitor = data.get('sid')  # 可选：/monitor 命名空间 socket.id，用于服务器侧入房
+        sid_default = data.get('sid_default')  # 可选：默认命名空间 socket.id，用于定向推送
+        # 若未显式提供默认sid，尝试用注册表推断
+        try:
+            if (not sid_default) and sid_monitor and sid_monitor in _sid_registry:
+                sid_default = _sid_registry.get(sid_monitor)
+        except Exception:
+            pass
         if not stream_name or not session_id:
             return jsonify({ 'success': False, 'message': 'stream_name 与 session_id 必填' }), 400
-        _manual_stream_bindings[stream_name] = { 'session_id': session_id, 'student_id': student_id }
-        return jsonify({ 'success': True })
+        _manual_stream_bindings[stream_name] = {
+            'session_id': session_id,
+            'student_id': student_id,
+            'sid_monitor': sid_monitor,
+            'sid_default': sid_default,
+        }
+        # 如提供了 sid，则让该连接进入以 stream_name 为单位的房间，便于定向推送
+        try:
+            if sid_monitor:
+                room = f"stream:{stream_name}"
+                # 使用服务器级 API 在 HTTP 上下文中将 sid 加入房间
+                socketio.server.enter_room(sid_monitor, room, namespace='/monitor')
+                return jsonify({ 'success': True, 'room': room, 'joined': True, 'sid_default': bool(sid_default) })
+        except Exception as e:
+            # 入房失败不影响绑定的建立
+            return jsonify({ 'success': True, 'room': f'stream:{stream_name}', 'joined': False, 'sid_default': bool(sid_default), 'message': str(e) })
+        return jsonify({ 'success': True, 'room': f'stream:{stream_name}', 'joined': False, 'sid_default': bool(sid_default) })
     except Exception as e:
         return jsonify({ 'success': False, 'message': str(e) }), 500
 
@@ -175,8 +222,54 @@ def compute_stream_name(exam_id: str, student_id: str) -> str:
     return f"exam-{ex}-user-{pid}"
 
 def get_mediamtx_host() -> str:
-    # 例如 http://192.168.0.112:8889
-    return os.environ.get('MEDIAMTX_HOST', 'http://127.0.0.1:8889')
+    """
+    获取MediaMTX服务器地址，支持自动检测
+    优先级：环境变量 > 自动检测 > 默认localhost
+    """
+    # 首先检查环境变量
+    if 'MEDIAMTX_HOST' in os.environ:
+        host = os.environ['MEDIAMTX_HOST']
+        print(f"[MediaMTX] 使用环境变量配置: {host}")
+        return host
+    
+    # 自动检测常见地址
+    import socket
+    import requests
+    
+    # 获取当前WSL的网关IP（通常是Windows主机）
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+        
+        # 从本地IP推断可能的Windows主机IP
+        ip_parts = local_ip.split('.')
+        if len(ip_parts) == 4:
+            # 尝试几个常见的主机地址
+            candidates = [
+                f"{'.'.join(ip_parts[:3])}.1",  # 网关通常是.1
+                "192.168.0.112",  # 用户提到的地址
+                "192.168.1.1",    # 常见网关
+                "172.27.29.1",    # WSL默认网关模式
+            ]
+            
+            for candidate in candidates:
+                try:
+                    url = f"http://{candidate}:8889"
+                    resp = requests.get(url, timeout=2)
+                    if 'mediamtx' in resp.headers.get('Server', '').lower():
+                        print(f"[MediaMTX] 自动检测成功: {url}")
+                        return url
+                except:
+                    continue
+                    
+    except Exception as e:
+        print(f"[MediaMTX] 自动检测失败: {e}")
+    
+    # 回退到默认值
+    default = 'http://127.0.0.1:8889'
+    print(f"[MediaMTX] 使用默认配置: {default}")
+    return default
 
 def get_mediamtx_hostname() -> str:
     try:
@@ -569,6 +662,162 @@ def create_session_api():
             'success': False,
             'message': f'创建检测会话失败: {str(e)}'
         }), 500
+
+# =================== 监控命名空间与订阅 ===================
+
+@socketio.on('monitor/subscribe', namespace='/monitor')
+def monitor_subscribe(data):
+    """教师端监控订阅：将当前 Socket 加入以 stream_name 为单位的房间"""
+    try:
+        sn = (data or {}).get('stream_name')
+        if not sn or not isinstance(sn, str):
+            emit('monitor/error', { 'code': 'bad_stream', 'message': 'invalid stream_name' })
+            return
+        room = f"stream:{sn}"
+        join_room(room)
+        try:
+            from flask import request as _req
+            print(f"[Monitor] sid={_req.sid} joined {room}")
+        except Exception:
+            pass
+        # 回执当前加入的房间与 sid，便于前端确认
+        emit('monitor/subscribed', { 'stream_name': sn, 'room': room })
+    except Exception as e:
+        emit('monitor/error', { 'code': 'subscribe_failed', 'message': str(e) })
+
+@app.route('/api/monitor/ping', methods=['POST'])
+def monitor_ping():
+    """测试向指定 stream 房间发送一条心率事件，便于快速验证前端订阅链路"""
+    try:
+        data = request.get_json(silent=True) or {}
+        stream_name = data.get('stream_name')
+        if not stream_name:
+            return jsonify({ 'success': False, 'message': 'stream_name 必填' }), 400
+        payload = {
+            'stream_name': stream_name,
+            'result': { 'heart_rate': 123, 'confidence': 0.9, 'detection_state': 'test' }
+        }
+        # 诊断：打印 /monitor 命名空间当前房间情况
+        try:
+            mgr = getattr(socketio.server, 'manager', None)
+            if mgr and hasattr(mgr, 'rooms'):
+                rooms_map = mgr.rooms.get('/monitor', {})
+                print('[PING] /monitor rooms:', { k: len(v) for k, v in rooms_map.items() })
+        except Exception as _e:
+            print('[PING] dump rooms failed:', _e)
+        socketio.emit('student.heart_rate', payload, room=f"stream:{stream_name}", namespace='/monitor')
+        return jsonify({ 'success': True })
+    except Exception as e:
+        return jsonify({ 'success': False, 'message': str(e) }), 500
+
+# 额外的广播式 PING（不依赖房间订阅），用于快速验证命名空间是否能收到事件
+@app.route('/api/monitor/ping/broadcast', methods=['POST'])
+def monitor_ping_broadcast():
+    try:
+        data = request.get_json(silent=True) or {}
+        stream_name = data.get('stream_name') or 'debug'
+        payload = {
+            'stream_name': stream_name,
+            'result': { 'heart_rate': 88, 'confidence': 0.8, 'detection_state': 'broadcast' }
+        }
+        # 向 /monitor 命名空间所有连接广播
+        socketio.emit('student.heart_rate', payload, namespace='/monitor')
+        # 同时向默认命名空间广播一个备用事件，便于前端主 Socket 也能看到
+        socketio.emit('rtsp_heart_rate_analysis', payload)
+        return jsonify({ 'success': True })
+    except Exception as e:
+        return jsonify({ 'success': False, 'message': str(e) }), 500
+
+# 简单直连：HTTP 轮询获取最新分析状态（替代依赖 Socket 事件）
+@app.route('/api/monitor/state', methods=['GET'])
+def monitor_state():
+    try:
+        sn = request.args.get('stream_name') or request.args.get('stream')
+        if not sn:
+            return jsonify({ 'success': False, 'message': 'stream_name 必填' }), 400
+        st = get_latest_state(sn)
+        return jsonify({ 'success': True, 'stream_name': sn, 'state': st })
+    except Exception as e:
+        return jsonify({ 'success': False, 'message': str(e) }), 500
+
+@socketio.on('connect', namespace='/monitor')
+def handle_monitor_connect():
+    try:
+        from flask import request as _req
+        print(f"[Monitor] namespace connected: sid={_req.sid}")
+    except Exception:
+        print("[Monitor] namespace connected")
+
+@socketio.on('monitor/register_sids', namespace='/monitor')
+def monitor_register_sids(data=None):
+    try:
+        from flask import request as _req
+        mon_sid = _req.sid
+        def_sid = (data or {}).get('default_sid')
+        if def_sid:
+            _sid_registry[mon_sid] = def_sid
+            emit('monitor/registered', { 'ok': True, 'sid_monitor': mon_sid, 'sid_default': def_sid })
+        else:
+            emit('monitor/registered', { 'ok': False, 'sid_monitor': mon_sid })
+    except Exception as e:
+        try:
+            emit('monitor/registered', { 'ok': False, 'error': str(e) })
+        except Exception:
+            pass
+
+@socketio.on('disconnect', namespace='/monitor')
+def handle_monitor_disconnect():
+    try:
+        from flask import request as _req
+        print(f"[Monitor] namespace disconnected: sid={_req.sid}")
+    except Exception:
+        print("[Monitor] namespace disconnected")
+
+@app.route('/api/monitor/rooms', methods=['GET'])
+def monitor_rooms():
+    """调试：列出 /monitor 命名空间下的房间和成员数量"""
+    try:
+        mgr = getattr(socketio.server, 'manager', None)
+        out = {}
+        if mgr and hasattr(mgr, 'rooms'):
+            ns = '/monitor'
+            rooms_map = mgr.rooms.get(ns, {})
+            for room, sids in rooms_map.items():
+                out[room] = len(sids)
+        return jsonify({ 'success': True, 'rooms': out })
+    except Exception as e:
+        return jsonify({ 'success': False, 'message': str(e) }), 500
+
+@app.route('/api/socketio/status', methods=['GET'])
+def socketio_status():
+    """调试：显示Socket.IO连接状态和客户端信息"""
+    try:
+        from datetime import datetime
+        status_info = {
+            'socketio_initialized': socketio is not None,
+            'server_initialized': hasattr(socketio, 'server') and socketio.server is not None,
+            'rtsp_manager_active_streams': len(rtsp_manager._threads) if rtsp_manager else 0
+        }
+        
+        if socketio.server and hasattr(socketio.server, 'manager'):
+            mgr = socketio.server.manager
+            # 默认命名空间的客户端
+            default_rooms = mgr.rooms.get('/', {})
+            status_info['default_namespace_clients'] = sum(len(sids) for sids in default_rooms.values())
+            status_info['default_rooms'] = len(default_rooms)
+            
+            # 监控命名空间的客户端
+            monitor_rooms = mgr.rooms.get('/monitor', {})
+            status_info['monitor_namespace_clients'] = sum(len(sids) for sids in monitor_rooms.values())
+            status_info['monitor_rooms'] = len(monitor_rooms)
+            
+        return jsonify({
+            'success': True,
+            'status': status_info,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/end_session', methods=['POST'])
 def end_session_api():
@@ -1502,9 +1751,8 @@ def handle_disconnect():
 @socketio.on('audio_data')
 def handle_audio_data(data):
     """处理音频数据 - 使用Emotion2Vec进行语音情绪分析"""
-    # 已弃用入口：统一改为 MediaMTX RTSP 消费，不再接收 Socket.IO 音频
-    print("[弃用] 收到 audio_data 事件，已忽略。请改用 RTSP 推流到 MediaMTX。")
-    return
+    # 恢复本机检测入口：本地页面通过 Socket.IO 直接发送音频分片
+    # 兼容 MediaMTX 方案并行存在，二者互不影响
     try:
         session_id = data.get('session_id')
         audio_data = data.get('audio_data')
@@ -1711,9 +1959,8 @@ def handle_audio_data(data):
 @socketio.on('video_frame')
 def handle_video_frame(data):
     """处理视频帧数据"""
-    # 已弃用入口：统一改为 MediaMTX RTSP 消费，不再接收 Socket.IO 视频
-    print("[弃用] 收到 video_frame 事件，已忽略。请改用 RTSP 推流到 MediaMTX。")
-    return
+    # 恢复本机检测入口：本地页面通过 Socket.IO 直接发送视频帧（base64）
+    # 兼容 MediaMTX 方案并行存在，二者互不影响
     try:
         session_id = data.get('session_id')
         frame_data = data.get('frame_data')

@@ -18,9 +18,9 @@
 
 ## 主要接口（与路由实现同步）
 - 公开/学生端：
-- `GET /api/ai-service/config` → AI服务配置与可用性
-  - 返回：`{ websocket_url, available, features:{...}, diagnostics?, error?, timestamp }`
-  - 前端使用 `websocket_url` 通过 Socket.IO 建立信令连接。
+  - `GET /api/ai-service/config` → AI服务配置与可用性
+    - 返回：`{ websocket_url, available, features:{...}, diagnostics?, error?, timestamp }`
+    - 前端使用返回信息建立WebRTC连接
   - `POST /api/public/exams/:publicUuid/create-ai-session` → 创建AI会话
   - `POST /api/public/exams/:publicUuid/retry-ai-session` → 重试AI会话
 - 教师端（teacher/ai）：
@@ -40,7 +40,7 @@
 - 情绪数据和心率实时分析处理
 - 多模态分析数据存储（FACE/ATTENTION/PPG/AUDIO）
 - AI报告生成和导出（PDF/DOCX/TXT）
-- WebRTC + Socket.IO实时数据传输
+- WebRTC → MediaMTX → RTSP 数据流传输
 
 ## AI会话生命周期
 
@@ -51,9 +51,10 @@
 4. **记录会话** → 在ai_sessions表中记录会话信息和状态
 
 ### 运行阶段
-1. **实时分析** → WebRTC数据流传输到AI服务
-2. **数据聚合** → 存储到ai_aggregates/ai_checkpoints表
-3. **异常检测** → 记录到ai_anomalies表
+1. **WebRTC推流** → 学生端通过WHIP协议推送到MediaMTX服务器
+2. **RTSP拉流** → AI服务从MediaMTX获取RTSP流进行分析
+3. **数据聚合** → 存储到ai_aggregates/ai_checkpoints表
+4. **异常检测** → 记录到ai_anomalies表
 
 ### 结束阶段  
 1. **学生提交答案** → 调用 submission 控制器，可能触发 AI endSession
@@ -61,9 +62,29 @@
 3. **停止会话** → 调用 AI 服务停止检测
 4. **更新状态** → 更新 ai_sessions.status=ENDED
 
+## 技术架构
+
+### 数据流传输
+```
+学生端(WebRTC) → MediaMTX(WHIP/WHEP) → RTSP流 → AI服务(Python) → 分析结果 → 后端数据库
+```
+
+### WebRTC集成
+- **WHIP协议**: 学生端推流到MediaMTX服务器
+- **媒体流管理**: MediaStreamContext维护全局流状态
+- **编码参数优化**: 1920x1080@30fps, 最大8Mbps码率
+- **降级策略**: maintain-resolution优先，自动适配网络条件
+
+### AI服务通信
+- **RTSP消费**: AI服务通过rtsp_consumer.py消费视频流
+- **实时分析**: DeepFace情绪检测 + PPG心率监测
+- **结果推送**: Socket.IO事件推送分析结果
+- **会话管理**: 独立的AI会话生命周期管理
+
 ## 注意事项
 - 支持AI服务降级处理与健康检查；前端仅提示可用性
 - AI会话可在提交前独立存在，提交时自动关联
 - 教师端报告下载地址通过 `report-status` 的 `latestReport.downloadUrl` 返回；无独立下载端点
-- WebRTC + Socket.IO 双向通信架构
+- WebRTC → MediaMTX → RTSP 流媒体传输架构
 - 支持 `AI_REQUIRED` 环境变量控制是否必需
+- 开发环境：WSL2 + Windows MediaMTX，生产环境：全Linux部署

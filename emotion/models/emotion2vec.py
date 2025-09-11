@@ -477,6 +477,85 @@ class Emotion2VecAnalyzer:
             logger.error(f"Emotion2Vec语音分析失败: {e}")
             raise Exception(f"语音情绪分析失败: {e}")
 
+    def analyze_array(self, audio: np.ndarray, sample_rate: Optional[int] = None) -> Dict[str, any]:
+        """直接分析 numpy 音频数组（单声道），用于RTSP等场景。
+        audio: 形如 (N,) 的波形，取值范围约 -1.0..1.0
+        sample_rate: 采样率，默认使用 self.sample_rate
+        """
+        try:
+            if not self.is_initialized:
+                raise Exception("Emotion2Vec模型未初始化，请先运行initialize()")
+            if not self.funasr_available or not self.model:
+                raise Exception("Emotion2Vec模型不可用")
+
+            if sample_rate is None:
+                sample_rate = self.sample_rate
+
+            # 重采样到模型采样率
+            if sample_rate != self.sample_rate:
+                from .audio_processor import WebRTCAudioProcessor
+                p = WebRTCAudioProcessor(target_sample_rate=self.sample_rate)
+                audio = p._simple_resample(audio.astype(np.float64), sample_rate, self.sample_rate)
+
+            # 推理（与 analyze() 分支一致）
+            if self.use_gpu:
+                try:
+                    import torch
+                    torch.cuda.empty_cache()
+                    with torch.cuda.device(0):
+                        if self.use_mixed_precision:
+                            with torch.cuda.amp.autocast():
+                                result = self._perform_inference(audio)
+                        else:
+                            result = self._perform_inference(audio)
+                except Exception:
+                    self.use_gpu = False
+                    self.device = torch.device('cpu')
+                    result = self._perform_inference(audio)
+            else:
+                result = self._perform_inference(audio)
+
+            if not result or len(result) == 0:
+                raise Exception("Emotion2Vec模型返回空结果")
+
+            emotion_result = result[0]
+            if 'labels' not in emotion_result or 'scores' not in emotion_result:
+                raise Exception("模型结果中未找到情绪信息")
+
+            labels = emotion_result['labels']
+            scores = emotion_result['scores']
+            max_score_idx = scores.index(max(scores))
+            dominant_raw_label = labels[max_score_idx]
+            max_raw_score = scores[max_score_idx]
+
+            emotions = {
+                'angry': 0.0, 'disgusted': 0.0, 'fearful': 0.0, 'happy': 0.0,
+                'neutral': 0.0, 'other': 0.0, 'sad': 0.0, 'surprised': 0.0, 'unknown': 0.0
+            }
+            emotion_index_map = {0: 'angry', 1: 'disgusted', 2: 'fearful', 3: 'happy', 4: 'neutral', 5: 'other', 6: 'sad', 7: 'surprised', 8: 'unknown'}
+            for i, score in enumerate(scores):
+                if i in emotion_index_map:
+                    emotions[emotion_index_map[i]] = float(score)
+
+            dominant_emotion = emotion_index_map.get(max_score_idx, 'neutral')
+
+            final_result = {
+                'emotions': emotions,
+                'dominant_emotion': dominant_emotion,
+                'confidence': float(max_raw_score),
+                'model': 'emotion2vec_plus_seed',
+                'audio_duration': len(audio) / self.sample_rate,
+                'audio_length': int(len(audio)),
+                'analysis_type': 'audio_emotion',
+                'analysis_quality': 'high',
+                'using_fake_data': False,
+                'raw_result': emotion_result
+            }
+            return final_result
+        except Exception as e:
+            logger.error(f"Emotion2Vec语音分析失败: {e}")
+            raise Exception(f"语音情绪分析失败: {e}")
+
     def get_model_info(self) -> Dict[str, any]:
         """获取模型信息"""
         return {

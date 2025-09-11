@@ -48,7 +48,7 @@
 - **答案缓存隔离**: 使用参与者ID隔离答案存储，防止不同学生答案污染
 - **智能提交按钮**: 最后一题完成后自动显示，必填项验证，时间紧急提醒
 - **设备检测与确认**: 用户预览后手动确认，支持设备切换和降级模式
-- **AI多模态情绪分析**: WebRTC实时传输（前端仅提示可用性，不展示具体生理/情绪数据）
+- **AI多模态情绪分析**: WebRTC → MediaMTX → RTSP流传输（前端仅提示可用性，不展示具体生理/情绪数据）
 - **题目条件逻辑显示**: 支持复杂的AND/OR条件显示规则  
 - **时间线事件记录**: 6种类型事件(DISPLAY/SELECT/CHANGE等)精确记录
 - **语音交互和智能匹配**: TTS播放和语音答题(已移除)
@@ -60,7 +60,7 @@
 - **自动清理污染缓存**: 启动时检测并清理旧格式的localStorage键（仅基于examUuid）
 - **Ref转发机制**: ExamSubmissionManager使用forwardRef+useImperativeHandle暴露showSubmissionConfirm方法
 - **设备流管理**: 设备预览期间流保持活跃，只在用户确认或离开页面时释放
-- **AI服务配置**: 支持环境变量VITE_AI_SERVICE_URL配置，默认http://localhost:5678
+- **AI服务配置**: 支持环境变量VITE_AI_SERVICE_URL配置，通过MediaMTX服务器进行流媒体传输
 - **Windows兼容性**: 优先使用真实摄像头，虚拟摄像头(OBS等)作为备选
 - **提交按钮显示**: 最后一题回答完成后显示，必填项未完成则禁用提交
 - **localStorage一致性**: 提交成功后清理缓存使用与存储相同的键名格式
@@ -87,5 +87,7 @@
 ## 注意事项（补充）
 - 提交入口统一：在最后一题的侧栏“快速导航”处进行提交；题目导航面板内的提交仍作为次要入口。
 - 公平性与隐私：AI 状态只提示可用性，不显示具体生理/情绪数据；所有改动不影响时间线记录与提交流程。
-- WebRTC 连接：前端会在开始考试时调用 `/api/public/exams/:uuid/create-ai-session` 获取 `ai_session_id`，并通过 `/api/ai-service/config` 返回的 `websocket_url` 建立 Socket.IO 信令连接，再发起 WebRTC Offer（兼容事件名：`webrtc-offer/webrtc-answer/ice-candidate`）。
- - WebRTC 信令与心跳：为兼容不同版本 AI 服务，前端同时发送 `webrtc-*` 与 `signal.*` 信令事件；连接建立后每 3s 发送 `session.heartbeat { session_id, ts(ISO) }`，以维持会话活跃并便于服务端监控。
+- **WebRTC流媒体架构**: 前端通过WHIP协议推流到MediaMTX服务器，AI服务从MediaMTX消费RTSP流进行分析
+  - **媒体流管理**: MediaStreamContext维护全局流状态，从设备检测阶段持续到考试结束
+  - **流传输优化**: 1920x1080@30fps分辨率，最高8Mbps码率，maintain-resolution降级策略
+  - **AI会话管理**: 调用 `/api/public/exams/:uuid/create-ai-session` 创建AI会话，无需直接WebRTC连接

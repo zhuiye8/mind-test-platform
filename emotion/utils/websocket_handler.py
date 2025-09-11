@@ -234,3 +234,7 @@ class WebSocketHandler:
     def get_active_sessions_count(self):
         """获取活跃会话数量"""
         return len(self.active_sessions)
+    
+    def emit_to_all(self, event, data):
+        """向所有客户端广播消息"""
+        self.socketio.emit(event, data)
