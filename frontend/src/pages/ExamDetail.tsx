@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Spin, Empty, message, Modal, Space, notification } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Button, Spin, Empty, message, Modal, Space, notification, Typography, Tag, Tooltip } from 'antd';
+import { ArrowLeftOutlined, LoadingOutlined } from '@ant-design/icons';
 import { examApi, teacherAiApi } from '../services/api';
 import type { Exam, ExamResult } from '../types';
 import type { ExamStatusType } from '../constants/examStatus';
@@ -13,6 +13,7 @@ import ExamInfoCard from './ExamDetail/components/ExamInfoCard';
 import ExamResultsTable from './ExamDetail/components/ExamResultsTable';
 
 // 本文件内不再直接渲染复杂布局，相关视图已拆分为子组件
+const { Text } = Typography;
 
 const ExamDetail: React.FC = () => {
   const { examId } = useParams<{ examId: string }>();

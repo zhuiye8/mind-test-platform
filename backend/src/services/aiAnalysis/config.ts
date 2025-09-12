@@ -9,7 +9,9 @@ export const AI_SERVICE_BASE_URL = process.env.AI_SERVICE_URL || 'http://localho
 // 默认超时配置
 export const DEFAULT_TIMEOUT = {
   HEALTH_CHECK: 5000,
-  SESSION_OPERATIONS: 10000,
+  // 提高会话操作超时：AI端在 end_session 中可能进行合并/写盘/异步回调
+  // 10s 容易在低配或大数据时超时，提升到 30s 更稳妥
+  SESSION_OPERATIONS: 30000,
   REPORT_GENERATION: 30000,
   WEBSOCKET_CHECK: 5000,
 } as const;

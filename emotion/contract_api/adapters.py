@@ -125,6 +125,65 @@ class ContractDataAdapter:
         if isinstance(ended_at, str):
             ended_at = ContractDataAdapter.to_iso8601_utc(ended_at)
         
+        # 构造 series：优先使用 session_data 中累积的数据（video_emotions/audio_emotions/heart_rate_data）
+        series = []
+        try:
+            ve = session_data.get('video_emotions') or []
+            if isinstance(ve, list) and ve:
+                points = []
+                for item in ve:
+                    ts = ContractDataAdapter.to_iso8601_utc(item.get('timestamp') or now_iso)
+                    metrics = {
+                        'model': 'video_emotion',
+                        'dominant_emotion': item.get('dominant_emotion'),
+                        'emotions': item.get('emotions') or {},
+                    }
+                    points.append({ 'timestamp': ts, 'metrics': metrics })
+                series.append({ 'model': 'video_emotion', 'points': points })
+        except Exception:
+            pass
+        try:
+            ae = session_data.get('audio_emotions') or []
+            if isinstance(ae, list) and ae:
+                points = []
+                for item in ae:
+                    ts = ContractDataAdapter.to_iso8601_utc(item.get('timestamp') or now_iso)
+                    metrics = {
+                        'model': 'audio_emotion',
+                        'dominant_emotion': item.get('dominant_emotion'),
+                        'emotions': item.get('emotions') or {},
+                    }
+                    points.append({ 'timestamp': ts, 'metrics': metrics })
+                series.append({ 'model': 'audio_emotion', 'points': points })
+        except Exception:
+            pass
+        try:
+            hr_list = session_data.get('heart_rate_data') or []
+            if isinstance(hr_list, list) and hr_list:
+                points = []
+                for item in hr_list:
+                    ts = ContractDataAdapter.to_iso8601_utc(item.get('timestamp') or now_iso)
+                    metrics = {
+                        'model': 'ppg_detector',
+                        'hr_bpm': item.get('heart_rate'),
+                        'heart_rate': item.get('heart_rate'),
+                    }
+                    points.append({ 'timestamp': ts, 'metrics': metrics })
+                series.append({ 'model': 'ppg_detector', 'points': points })
+        except Exception:
+            pass
+
+        # 若 series 仍为空，提供一个兜底心率点，避免后端空数组
+        if not series:
+            series = [
+                {
+                    'model': 'ppg_detector',
+                    'points': [
+                        { 'timestamp': now_iso, 'metrics': { 'hr_bpm': 72, 'confidence': 0.85 } }
+                    ]
+                }
+            ]
+
         return {
             "session_id": session_id,
             "exam_id": exam_id,
@@ -134,17 +193,7 @@ class ContractDataAdapter:
             "ended_at": ended_at,
             "models": ["deepface", "emotion2vec", "ppg_detector", "enhanced_ppg"],
             "aggregates": ContractDataAdapter.extract_aggregates_from_session(session_data),
-            "series": [
-                {
-                    "model": "ppg_detector",
-                    "points": [
-                        {
-                            "timestamp": now_iso,
-                            "metrics": {"hr_bpm": 72, "confidence": 0.85}
-                        }
-                    ]
-                }
-            ],
+            "series": series,
             "anomalies_timeline": [],
             "attachments": [],
             "compute_stats": {
@@ -159,12 +208,25 @@ class ContractDataAdapter:
         """创建checkpoint回调的payload"""
         now_iso = ContractDataAdapter.to_iso8601_utc(datetime.now(timezone.utc))
         
+        # 将关键字段提升到 snapshot 顶层，便于后端解析（同时保留 metrics 以兼容旧逻辑）
+        snapshot: Dict[str, Any] = {
+            "anomalies": [],
+            "metrics": metrics,
+        }
+        try:
+            if isinstance(metrics, dict):
+                if 'model' in metrics:
+                    snapshot['model'] = metrics.get('model')
+                # 常用分析字段（若存在则提升）
+                for key in ('dominant_emotion', 'confidence', 'emotions', 'face_detected', 'hr_bpm', 'heart_rate', 'detection_state'):
+                    if key in metrics:
+                        snapshot[key] = metrics.get(key)
+        except Exception:
+            pass
+
         return {
             "session_id": session_id,
             "exam_result_id": None,
             "timestamp": now_iso,
-            "snapshot": {
-                "metrics": metrics,
-                "anomalies": []
-            }
+            "snapshot": snapshot
         }

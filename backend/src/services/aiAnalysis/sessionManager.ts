@@ -163,11 +163,15 @@ export class SessionManager {
       console.log(`[AI分析] 停止会话: ${aiSessionId}`);
 
       // 调用AI服务停止会话
+      // 向 AI 服务发送停止会话请求
+      // 注：此处同时传递 exam_result_id，作为后续 finalize 回调的唯一标识
       const response = await axios.post<EndSessionResponse>(
         `${AI_SERVICE_BASE_URL}/api/end_session`,
         {
           session_id: aiSessionId,
-        } as EndSessionRequest,
+          // 关键：传递考试结果ID，便于AI端在回调时回传并写入后端
+          exam_result_id: examResultId,
+        } as any,
         {
           timeout: DEFAULT_TIMEOUT.SESSION_OPERATIONS,
           headers: {

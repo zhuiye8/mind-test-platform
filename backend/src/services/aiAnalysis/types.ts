@@ -26,6 +26,11 @@ export interface CreateSessionResponse {
 
 export interface EndSessionRequest {
   session_id: string;
+  // 可选：在停止会话时附带考试结果ID，便于AI端后续回传
+  exam_result_id?: string;
+  // 兼容扩展：可选携带上下文（目前未使用）
+  participant_id?: string;
+  exam_id?: string;
 }
 
 export interface EndSessionResponse {

@@ -4,6 +4,7 @@
 """
 
 import json
+import os
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -67,144 +68,131 @@ def create_session():
                 message="Missing required parameters: participant_id, exam_id"
             )), 400
         
-        # 生成session_id
+        # 生成唯一session_id (UUID)
         session_id = str(uuid.uuid4())
+        logger.info(f"[CreateSession] 生成唯一UUID session_id: {session_id}")
         
-        # 创建会话数据
-        session_data = {
-            'session_id': session_id,
-            'participant_id': participant_id,  # 契约字段
-            'student_id': participant_id,      # emotion内部字段映射
-            'exam_id': exam_id,
-            'started_at': ContractDataAdapter.to_iso8601_utc(datetime.now(timezone.utc)),
-            'status': 'active',
-            'analysis_results': {}
-        }
-        
-        # 保存会话到emotion的数据存储
-        # 这里需要与emotion现有的会话存储机制集成
-        try:
-            # 集成emotion的实际会话管理
-            from flask import current_app
-            
-            # 直接访问全局student_sessions变量
-            session_registered = False
-            
-            # 方式1: 通过current_app
+        # 计算stream_name
+        if provided_stream_name:
+            stream_name = provided_stream_name
+        elif exam_public_uuid and participant_id:
             try:
-                if hasattr(current_app, 'student_sessions') and current_app.student_sessions is not None:
-                    # 计算/采用统一流名
-                    try:
-                        from app_lan import compute_stream_name as _compute_stream_name
-                        if provided_stream_name:
-                            _stream_name = provided_stream_name
-                        elif exam_public_uuid:
-                            _stream_name = _compute_stream_name(exam_public_uuid, participant_id)
-                        else:
-                            _stream_name = _compute_stream_name(exam_id, participant_id)
-                    except Exception:
-                        _stream_name = provided_stream_name or None
-                    current_app.student_sessions[session_id] = {
-                        'session_id': session_id,
-                        'student_id': participant_id,
-                        'exam_id': exam_id,
-                        'exam_public_uuid': exam_public_uuid,
-                        'start_time': session_data['started_at'],
-                        'status': 'active',
-                        'last_activity': session_data['started_at'],
-                        'stream_name': _stream_name
-                    }
-                    session_registered = True
-                    logger.info(f"✅ 通过current_app注册会话: {session_id[:8]}..., 总数: {len(current_app.student_sessions)}")
-            except Exception as app_error:
-                logger.warning(f"⚠️ current_app访问失败: {app_error}")
-            
-            # 方式2: 通过全局变量导入
-            if not session_registered:
-                try:
-                    # 导入全局变量
-                    from app_lan import student_sessions as global_student_sessions
-                    try:
-                        from app_lan import compute_stream_name as _compute_stream_name
-                        if provided_stream_name:
-                            _stream_name = provided_stream_name
-                        elif exam_public_uuid:
-                            _stream_name = _compute_stream_name(exam_public_uuid, participant_id)
-                        else:
-                            _stream_name = _compute_stream_name(exam_id, participant_id)
-                    except Exception:
-                        _stream_name = provided_stream_name or None
-                    global_student_sessions[session_id] = {
-                        'session_id': session_id,
-                        'student_id': participant_id,
-                        'exam_id': exam_id,
-                        'exam_public_uuid': exam_public_uuid,
-                        'start_time': session_data['started_at'],
-                        'status': 'active',
-                        'last_activity': session_data['started_at'],
-                        'stream_name': _stream_name
-                    }
-                    session_registered = True
-                    logger.info(f"✅ 通过全局导入注册会话: {session_id[:8]}..., 总数: {len(global_student_sessions)}")
-                except Exception as import_error:
-                    logger.warning(f"⚠️ 全局导入失败: {import_error}")
-            
-            # 方式3: 通过sys.modules
-            if not session_registered:
-                try:
-                    import sys
-                    app_module = sys.modules.get('app_lan')
-                    if app_module and hasattr(app_module, 'student_sessions'):
-                        app_module.student_sessions[session_id] = {
-                            'session_id': session_id,
-                            'student_id': participant_id,
-                            'exam_id': exam_id,
-                            'start_time': session_data['started_at'],
-                            'status': 'active',
-                            'last_activity': session_data['started_at']
-                        }
-                        session_registered = True
-                        logger.info(f"✅ 通过sys.modules注册会话: {session_id[:8]}..., 总数: {len(app_module.student_sessions)}")
-                    else:
-                        logger.warning("⚠️ sys.modules中未找到student_sessions")
-                except Exception as sys_error:
-                    logger.warning(f"⚠️ sys.modules访问失败: {sys_error}")
-                    
-            if not session_registered:
-                logger.error("❌ 所有方式都失败，会话未注册到监控系统")
-            
+                from lan.stream_utils import compute_stream_name
+                stream_name = compute_stream_name(exam_public_uuid, participant_id)
+            except Exception:
+                stream_name = f"exam-{exam_public_uuid[:8]}-user-{participant_id[:8]}"
+        else:
+            stream_name = f"exam-{exam_id[:8]}-user-{participant_id[:8]}"
+        
+        logger.info(f"[CreateSession] 计算stream_name用于RTSP: {stream_name}")
+        
+        # 使用DataManager创建本地会话文件
+        try:
+            from utils.data_manager import DataManager
+            data_manager = DataManager()
+            session_data = data_manager.create_session(session_id)
+            session_data.update({
+                'session_id': session_id,
+                'participant_id': participant_id,
+                'student_id': participant_id,
+                'exam_id': exam_id,
+                'exam_public_uuid': exam_public_uuid,
+                'stream_name': stream_name,
+                'status': 'active',
+                'started_at': ContractDataAdapter.to_iso8601_utc(datetime.now(timezone.utc))
+            })
+            data_manager.save_session(session_data)
+            logger.info(f"✅ DataManager创建会话: {session_id[:8]}..., exam_id: {exam_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ DataManager创建失败: {e}, 使用基础会话数据")
+            session_data = {
+                'session_id': session_id,
+                'participant_id': participant_id,
+                'student_id': participant_id,
+                'exam_id': exam_id,
+                'started_at': ContractDataAdapter.to_iso8601_utc(datetime.now(timezone.utc)),
+                'status': 'active',
+                'analysis_results': {}
+            }
+        
+        # 保存会话到emotion的数据存储（健壮化注册到监控系统）
+        try:
+            from flask import current_app, has_app_context
+            import sys
+            import os
+
+            session_registered = False
+
+            # 统一构造会话对象
+            session_obj = {
+                'session_id': session_id,
+                'stream_name': stream_name,
+                'student_id': participant_id,
+                'exam_id': exam_id,
+                'exam_public_uuid': exam_public_uuid,
+                'start_time': session_data.get('started_at', ContractDataAdapter.to_iso8601_utc(datetime.now(timezone.utc))),
+                'status': 'active',
+                'last_activity': session_data.get('started_at', ContractDataAdapter.to_iso8601_utc(datetime.now(timezone.utc)))
+            }
+
+            # 找到真实的 app 模块：可能是 'app_lan'、'emotion.app_lan' 或 '__main__'
+            candidates = ['app_lan', 'emotion.app_lan']
+            if has_app_context():
+                candidates.insert(0, getattr(current_app, 'import_name', '') or '__main__')
+            app_module = None
+            for name in candidates:
+                mod = sys.modules.get(name)
+                if mod is not None:
+                    app_module = mod
+                    break
+
+            # 确保存在共享的 student_sessions 字典
+            shared_sessions = None
+            if has_app_context() and hasattr(current_app, 'student_sessions') and isinstance(current_app.student_sessions, dict):
+                shared_sessions = current_app.student_sessions
+            elif app_module is not None and hasattr(app_module, 'student_sessions') and isinstance(getattr(app_module, 'student_sessions'), dict):
+                shared_sessions = getattr(app_module, 'student_sessions')
+                if has_app_context():
+                    current_app.student_sessions = shared_sessions
+            else:
+                # 创建共享 dict，并同时挂载到 current_app 与 app_module
+                shared_sessions = {}
+                if has_app_context():
+                    current_app.student_sessions = shared_sessions
+                if app_module is not None:
+                    setattr(app_module, 'student_sessions', shared_sessions)
+
+            # 正式注册会话
+            shared_sessions[session_id] = session_obj
+            session_registered = True
+            try:
+                total = len(shared_sessions)
+            except Exception:
+                total = '?'
+            logger.info(f"✅ 学生会话注册成功: {session_id[:8]}..., 总数: {total}")
+
+            # 同步为 RTSP 映射（通过 shared_sessions 与 app_lan 使用同一对象即可）
+
             # 同时保存到文件存储作为备份
             session_file = f"/home/aaron/心理测试平台/emotion/data/sessions/{session_id}.json"
-            import os
             os.makedirs(os.path.dirname(session_file), exist_ok=True)
-            
             with open(session_file, 'w') as f:
                 json.dump(session_data, f, indent=2)
             
-            # 通知教师端有新学生连接（如果socketio可用）
+            # 通知教师端有新学生连接
             try:
                 from flask_socketio import emit
-                try:
-                    from app_lan import compute_stream_name as _compute_stream_name
-                    if provided_stream_name:
-                        _stream_name = provided_stream_name
-                    elif exam_public_uuid:
-                        _stream_name = _compute_stream_name(exam_public_uuid, participant_id)
-                    else:
-                        _stream_name = _compute_stream_name(exam_id, participant_id)
-                except Exception:
-                    _stream_name = provided_stream_name or None
                 emit('student_connected', {
                     'session_id': session_id,
                     'student_id': participant_id,
                     'exam_id': exam_id,
                     'exam_public_uuid': exam_public_uuid,
-                    'stream_name': _stream_name,
+                    'stream_name': stream_name,
                     'timestamp': session_data['started_at']
                 }, broadcast=True)
                 logger.info(f"✅ 已通知教师端新学生连接: {session_id[:8]}...")
             except Exception as emit_error:
-                logger.warning(f"⚠️ 无法通知教师端学生连接: {emit_error}")
+                logger.error(f"⚠️ 无法通知教师端学生连接: {emit_error}")
             
             logger.info(f"Session created: {session_id}, participant: {participant_id}, exam: {exam_id}")
             
@@ -220,7 +208,6 @@ def create_session():
             success=True,
             session_id=session_id
         )
-        
         return jsonify(response), 200
         
     except Exception as e:
@@ -233,75 +220,90 @@ def create_session():
 
 @contract_bp.route('/end_session', methods=['POST'])
 def end_session():
-    """结束AI分析会话"""
+    """结束AI分析会话（契约端点）
+    - 接收: { session_id, exam_result_id? }
+    - 行为: 将 exam_result_id 写入会话文件，结束会话（标记 stopped 与 end_time），触发 finalize 回调
+    - 返回: { success, message }
+    """
     try:
-        # 解析请求参数
-        data = request.get_json()
-        if not data:
-            return jsonify(ContractDataAdapter.end_session_response(
-                success=False,
-                message="Invalid JSON payload"
-            )), 400
-        
-        # 兼容 camelCase 与 snake_case
+        data = request.get_json(silent=True) or {}
+        # 兼容 camelCase / snake_case
         session_id = data.get('session_id') or data.get('sessionId')
+        exam_result_id = data.get('exam_result_id') or data.get('examResultId')
+
         if not session_id:
             return jsonify(ContractDataAdapter.end_session_response(
                 success=False,
-                message="Missing required parameter: session_id"
+                message='Missing required parameter: session_id'
             )), 400
-        
-        # 加载会话数据
-        session_file = f"/home/aaron/心理测试平台/emotion/data/sessions/{session_id}.json"
+
+        # 加载/补全会话数据
+        from utils.data_manager import DataManager
+        dm = DataManager()
+        session_data = dm.load_session(session_id) or {}
+
+        # 若文件缺失，尽量从共享 student_sessions 中补全 exam_id 等元数据
         try:
-            with open(session_file, 'r') as f:
-                session_data = json.load(f)
-        except FileNotFoundError:
-            logger.warning(f"Session not found: {session_id}")
-            # 会话不存在也返回成功，按契约要求不阻断考试
-            return jsonify(ContractDataAdapter.end_session_response(
-                success=True,
-                message="Session not found, but treated as success"
-            )), 200
-        except Exception as e:
-            logger.error(f"Failed to load session {session_id}: {str(e)}")
+            from flask import current_app, has_app_context
+            import sys
+            shared_sessions = None
+            if has_app_context() and hasattr(current_app, 'student_sessions') and isinstance(current_app.student_sessions, dict):
+                shared_sessions = current_app.student_sessions
+            else:
+                mod = sys.modules.get('app_lan') or sys.modules.get('emotion.app_lan')
+                if mod is not None and hasattr(mod, 'student_sessions') and isinstance(getattr(mod, 'student_sessions'), dict):
+                    shared_sessions = getattr(mod, 'student_sessions')
+            if isinstance(shared_sessions, dict) and session_id in shared_sessions:
+                meta = shared_sessions.get(session_id) or {}
+            else:
+                meta = {}
+        except Exception:
+            meta = {}
+
+        # 写入/更新关键字段
+        session_data.setdefault('session_id', session_id)
+        if exam_result_id:
+            session_data['exam_result_id'] = exam_result_id
+        # 兼容字段：participant_id / student_id
+        if 'participant_id' not in session_data and 'student_id' in session_data:
+            session_data['participant_id'] = session_data.get('student_id')
+        # 尽可能补全 exam_id
+        if not session_data.get('exam_id') and meta.get('exam_id'):
+            session_data['exam_id'] = meta.get('exam_id')
+
+        # 先保存一次，确保 exam_result_id 写入文件
+        dm.save_session(session_data)
+
+        # 结束会话（内部会标记 stopped 与 end_time，并尝试触发 finalize 回调）
+        ok = dm.end_session(session_id)
+        if not ok:
+            # 文件仍不存在或其他异常
             return jsonify(ContractDataAdapter.end_session_response(
                 success=False,
-                message=f"Failed to load session: {str(e)}"
-            )), 500
-        
-        # 更新会话状态
-        session_data['ended_at'] = ContractDataAdapter.to_iso8601_utc(datetime.now(timezone.utc))
-        session_data['status'] = 'ended'
-        
-        # 保存更新后的会话数据
+                message='会话不存在或无法结束'
+            )), 404
+
+        # 同步更新共享的 student_sessions 状态，便于教师端监控
         try:
-            with open(session_file, 'w') as f:
-                json.dump(session_data, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to update session {session_id}: {str(e)}")
-        
-        # 异步发送Finalize回调
-        try:
-            exam_id = session_data.get('exam_id')
-            if exam_id:
-                callback_service.send_finalize(session_id, exam_id, session_data, async_send=True)
-            else:
-                logger.warning(f"No exam_id found for session {session_id}, skipping finalize callback")
-        except Exception as e:
-            logger.error(f"Failed to send finalize callback for session {session_id}: {str(e)}")
-        
-        logger.info(f"Session ended: {session_id}")
-        
-        # 返回成功响应
-        return jsonify(ContractDataAdapter.end_session_response(success=True)), 200
-        
+            if meta is not None and isinstance(meta, dict):
+                meta['status'] = 'stopped'
+                from datetime import datetime
+                meta['end_time'] = ContractDataAdapter.to_iso8601_utc(datetime.utcnow())
+        except Exception:
+            pass
+
+        return jsonify(ContractDataAdapter.end_session_response(
+            success=True,
+            message='检测已停止'
+        )), 200
+
     except Exception as e:
         logger.error(f"End session error: {str(e)}")
         return jsonify(ContractDataAdapter.end_session_response(
             success=False,
             message=f"Internal server error: {str(e)}"
         )), 500
+
 
 
 @contract_bp.route('/ai/config', methods=['GET'])

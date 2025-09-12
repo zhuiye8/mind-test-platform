@@ -297,6 +297,25 @@ async function handleExamSubmission(
         },
       });
     }
+
+    // 结束AI检测（重构后：提交时才创建ExamResult，因此此处分支也需要结束会话）
+    let aiWarning = null;
+    try {
+      const endResult = await aiAnalysisService.endSession(result.id);
+      if (endResult.success) {
+        console.log(`🔚 AI会话(通过新建记录关联) 已结束`);
+      } else {
+        console.warn(`⚠️ AI会话结束失败: ${endResult.error}`);
+        aiWarning = 'AI分析服务不可用，但答案已成功保存';
+      }
+    } catch (aiError: any) {
+      console.warn(`⚠️ AI服务连接失败: ${aiError?.message || aiError}`);
+      aiWarning = 'AI分析服务暂时不可用，但答案已成功保存';
+    }
+
+    if (aiWarning) {
+      (result as any).aiWarning = aiWarning;
+    }
   }
 
   return result;

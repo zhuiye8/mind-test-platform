@@ -134,7 +134,8 @@ class DataManager:
             return False
         
         session_data['end_time'] = datetime.now().isoformat()
-        session_data['status'] = 'completed'
+        # 与契约统一，标记为 stopped 以允许后续题目分析
+        session_data['status'] = 'stopped'
         
         # 计算最终统计信息
         self._calculate_final_statistics(session_data)

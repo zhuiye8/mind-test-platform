@@ -141,8 +141,9 @@ class SimpleStudentAPI:
             else:
                 session_data = self.active_sessions[session_id]
             
-            # 验证会话状态必须是stopped
-            if session_data.get('status') != 'stopped':
+            # 验证会话状态：兼容 stopped/ended/completed
+            status = session_data.get('status')
+            if status not in ('stopped', 'ended', 'completed'):
                 return {
                     'success': False,
                     'message': '请先调用停止检测接口，再发送题目数据'

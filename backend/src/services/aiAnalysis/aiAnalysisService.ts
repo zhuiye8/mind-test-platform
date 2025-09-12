@@ -106,10 +106,121 @@ export class AIAnalysisService {
   // ==================== 情感数据处理 ====================
 
   /**
-   * 获取原始情绪数据并同步真实时间戳（用于前端JSON预览）
+   * 从JSON文件获取原始情绪数据（新架构）
    */
-  async getRawEmotionDataWithTimestamp(_examResultId: string, _metadata: { examTitle: string; participantName: string }) {
-    throw new Error('原始情绪数据功能需要真实AI会话数据，请先完成AI分析');
+  async getRawEmotionDataWithTimestamp(examResultId: string, _metadata: { examTitle: string; participantName: string }) {
+    const fs = (await import('fs/promises'));
+    const path = (await import('path'));
+    const prisma = (await import('../../utils/database')).default;
+    
+    try {
+      // 1. 尝试从JSON文件读取
+      const filePath = path.join(process.cwd(), 'storage', 'ai-sessions', `${examResultId}.json`);
+      
+      try {
+        // 读取本地JSON文件（AI finalize 回传保存）
+        const stat = await fs.stat(filePath);
+        // 简单就绪判据：文件存在且大小>1KB（过小可能仅为占位/空数组）
+        if (!stat || stat.size < 1024) {
+          return {
+            session_id: null,
+            exam_result_id: examResultId,
+            transferring: true,
+            message: 'AI分析数据正在生成和传输中，请稍后重试',
+          };
+        }
+        const fileContent = await fs.readFile(filePath, 'utf-8');
+        const jsonData = JSON.parse(fileContent);
+        
+        console.log(`[AI分析] 从文件读取成功: ${filePath}, 视频情绪:${jsonData.video_emotions?.length || 0}, 音频情绪:${jsonData.audio_emotions?.length || 0}, 心率:${jsonData.heart_rate_data?.length || 0}`);
+        
+        // 返回标准格式
+        return {
+          session_id: jsonData.session_id,
+          exam_result_id: examResultId,
+          start_time: jsonData.start_time || jsonData.started_at,
+          end_time: jsonData.end_time || jsonData.ended_at,
+          video_emotions: jsonData.video_emotions || [],
+          audio_emotions: jsonData.audio_emotions || [],
+          heart_rate_data: jsonData.heart_rate_data || [],
+          aggregates: jsonData.aggregates || {},
+          anomalies_timeline: jsonData.anomalies_timeline || [],
+          message: 'ok'
+        };
+        
+      } catch (fileError) {
+        console.log(`[AI分析] JSON文件不存在，尝试兼容模式: ${filePath}`);
+        
+        // 2. 兼容模式：从数据库读取基本信息
+        const examResult = await prisma.examResult.findUnique({
+          where: { id: examResultId },
+          select: { 
+            aiSessionId: true, 
+            startedAt: true, 
+            submittedAt: true,
+            participantId: true,
+            examId: true
+          }
+        });
+        
+        if (!examResult) {
+          return {
+            session_id: null,
+            exam_result_id: examResultId,
+            start_time: null,
+            end_time: null,
+            video_emotions: [],
+            audio_emotions: [],
+            heart_rate_data: [],
+            aggregates: {},
+            anomalies_timeline: [],
+            message: '考试结果不存在',
+          };
+        }
+        
+        // 尝试查找AI会话
+        let sessionId = examResult.aiSessionId;
+        if (!sessionId) {
+          const session = await prisma.aiSession.findFirst({
+            where: { 
+              examResultId: examResultId 
+            },
+            orderBy: { createdAt: 'desc' }
+          });
+          sessionId = session?.id || null;
+        }
+        
+        return {
+          session_id: sessionId,
+          exam_result_id: examResultId,
+          start_time: examResult.startedAt?.toISOString() || null,
+          end_time: examResult.submittedAt?.toISOString() || null,
+          video_emotions: [],
+          audio_emotions: [],
+          heart_rate_data: [],
+          aggregates: {},
+          anomalies_timeline: [],
+          // 标记传输中，前端可据此轮询
+          transferring: true,
+          message: sessionId ? 'AI正在分析数据并生成报告，请稍后重试' : '未找到AI会话',
+        };
+      }
+      
+    } catch (error) {
+      console.error(`[AI分析] 获取情绪数据失败: ${examResultId}`, error);
+      return {
+        session_id: null,
+        exam_result_id: examResultId,
+        start_time: null,
+        end_time: null,
+        video_emotions: [],
+        audio_emotions: [],
+        heart_rate_data: [],
+        aggregates: {},
+        anomalies_timeline: [],
+        message: '读取分析数据失败',
+      };
+    }
   }
 
   /**

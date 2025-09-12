@@ -5,17 +5,22 @@
 - AI 模型: DeepFace、Emotion2Vec、PPG/Enhanced PPG
 - 数据源: RTSP流消费（MediaMTX → CV2）
 - 合约层: `contract_api` Blueprint（REST 合约与回调）
-- 结果推送: Socket.IO事件推送
+- 结果推送: Socket.IO事件推送（支持Flask应用上下文）
+- 环境配置: 支持.env文件和MediaMTX自动检测
 - 运行端口: 5678（统一合约）
 
 ## 运行入口
-- 本机开发: `python emotion/app.py`（127.0.0.1:5678）
-- 局域网部署: `python emotion/app_lan.py`（0.0.0.0:5678）
+- 推荐入口（本机/局域网统一）: `python emotion/app_lan.py`（默认 0.0.0.0:5678）
 
 ## 关键模块
 - `emotion/app_lan.py`：主应用（LAN，建议部署入口）
+  - 支持.env环境变量自动加载
+  - MediaMTX服务器地址自动检测
+  - Flask应用上下文传递给RTSP消费者
 - `emotion/contract_api/`：合约 API 与回调
 - `emotion/rtsp_consumer.py`：RTSP流消费与AI分析处理
+  - 新增`_safe_emit()`函数支持Flask应用上下文
+  - 多命名空间事件广播（默认+/monitor）
 - `emotion/models/*`：AI 模型加载与推理
 - `emotion/utils/*`：数据处理辅助工具
 - `emotion/config.py`：全局配置（端口、CORS、SocketIO）
@@ -41,6 +46,8 @@
 - **容错处理**: OpenCV + FFmpeg 双重解码备选
 - **自动重连**: 网络中断自动恢复连接
 - **性能优化**: 640x360降采样，减少计算开销
+- **Flask应用上下文**: `_safe_emit()`确保后台线程正确发送Socket.IO事件
+- **多命名空间广播**: 同时向`/`和`/monitor`命名空间广播事件
 
 ### AI模型集成
 - **DeepFace**: 7种情绪检测（angry/disgust/fear/happy/sad/surprise/neutral）
@@ -56,7 +63,16 @@
 - 端口固定 5678
 - 字段命名 snake_case；时间戳 ISO8601 UTC（末尾 Z）
 - 健康检查与配置以合约蓝图返回为准
-- MediaMTX RTSP 地址格式：`rtsp://localhost:8554/{stream_name}`
+- MediaMTX RTSP 地址格式：`rtsp://{host}:8554/{stream_name}`
+
+## 环境配置
+### MediaMTX服务器配置
+- **环境变量**: `MEDIAMTX_HOST=http://192.168.0.112:8889`
+- **自动检测**: 未设置环境变量时自动检测MediaMTX位置
+  1. 检测WSL网关地址（如172.27.29.1）
+  2. 尝试常见地址：192.168.0.112、192.168.1.1
+  3. 回退到127.0.0.1
+- **配置文件**: 支持`.env`文件加载环境变量
 
 ## 部署环境
 - **开发环境**: WSL2(AI服务) + Windows(MediaMTX)

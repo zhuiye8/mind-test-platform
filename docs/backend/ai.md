@@ -4,7 +4,20 @@
 - `/backend/src/controllers/aiController.ts` - AI功能控制器
 - `/backend/src/controllers/aiDataController.ts` - AI数据控制器
 - `/backend/src/controllers/aiReportController.ts` - AI报告控制器
-- `/backend/src/services/aiAnalysis/` - AI分析服务模块(8个文件)
+- `/backend/src/services/aiAnalysis/` - AI分析服务模块(11个文件)
+  - `aiAnalysisService.ts` - 核心AI分析服务
+  - `aiDataMatcher.ts` - AI数据匹配器（新增）
+  - `promptBuilder.ts` - 报告提示构建器（新增）
+  - `reportGenerator.ts` - AI报告生成器
+  - `emotionDataProcessor.ts` - 情绪数据处理器
+  - `sessionManager.ts` - AI会话管理器
+  - `questionDataBuilder.ts` - 题目数据构建器
+  - `healthChecker.ts` - 健康检查器
+  - `config.ts` - AI服务配置
+  - `types.ts` - TypeScript类型定义
+  - `index.ts` - 模块导出
+- `/backend/src/services/llm/` - LLM服务模块（新增）
+  - `GenericLLMClient.ts` - 通用LLM客户端
 - `/backend/src/services/aiProxyService.ts` - AI代理服务
 - `/backend/src/services/aiReportService.ts` - AI报告服务
 
@@ -41,6 +54,9 @@
 - 多模态分析数据存储（FACE/ATTENTION/PPG/AUDIO）
 - AI报告生成和导出（PDF/DOCX/TXT）
 - WebRTC → MediaMTX → RTSP 数据流传输
+- **新增**: AI数据匹配和关联分析（aiDataMatcher.ts）
+- **新增**: LLM报告生成提示构建（promptBuilder.ts）
+- **新增**: 通用LLM客户端集成（GenericLLMClient.ts）
 
 ## AI会话生命周期
 
@@ -61,6 +77,23 @@
 2. **查找AI会话** → ExamResult.aiSessionId 或 participantId+examId
 3. **停止会话** → 调用 AI 服务停止检测
 4. **更新状态** → 更新 ai_sessions.status=ENDED
+
+## 新增模块详解
+
+### AI数据匹配器 (aiDataMatcher.ts)
+- **功能**: 将AI分析数据与考试答题数据进行关联匹配
+- **实现**: 基于时间戳和会话ID进行精确匹配
+- **用途**: 为报告生成提供完整的数据关联关系
+
+### 报告提示构建器 (promptBuilder.ts) 
+- **功能**: 根据考试数据和AI分析结果构建LLM报告生成提示
+- **实现**: 模板化提示构建，支持多种报告类型
+- **用途**: 为LLM客户端提供结构化的报告生成指令
+
+### 通用LLM客户端 (GenericLLMClient.ts)
+- **功能**: 统一的LLM服务接口，支持多种LLM提供商
+- **实现**: 抽象化的API调用接口，支持OpenAI、Claude等
+- **用途**: AI报告生成的核心引擎，处理自然语言生成任务
 
 ## 技术架构
 

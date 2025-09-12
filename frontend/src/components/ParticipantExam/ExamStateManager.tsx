@@ -144,12 +144,51 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
 
   // 参与者信息提交
   const handleParticipantInfoSubmit = async (values: ParticipantInfo) => {
-    setParticipantInfo(values);
-    // 保存参与者信息到localStorage
-    localStorage.setItem('participantInfo', JSON.stringify(values));
-    message.success('参与者信息已保存');
-    // 进入设备连接步骤（信息填写之后）
-    setCurrentStepWithHistory('device-test');
+    setLoading(true);
+    try {
+      // 检查是否已经提交过（如果不允许多次提交）
+      if (!exam?.allowMultipleSubmissions) {
+        console.log('检查重复提交...', { examUuid, participantId: values.participantId });
+        const duplicateCheck = await enhancedPublicApi.checkDuplicateSubmission(
+          examUuid!, 
+          values.participantId
+        );
+        
+        console.log('重复检查响应:', duplicateCheck);
+        const canSubmit = duplicateCheck.data?.can_submit ?? duplicateCheck.data?.canSubmit;
+        if (!duplicateCheck.success || !canSubmit) {
+          // 显示友好的提示
+          Modal.warning({
+            title: '您已参加过此考试',
+            content: (
+              <div>
+                <p>检测到您（学号：<strong>{values.participantId}</strong>）已经提交过本次考试。</p>
+                <p>本考试不允许重复参加。</p>
+                <p style={{ marginTop: 16, color: '#666' }}>
+                  如有疑问，请联系监考老师。
+                </p>
+              </div>
+            ),
+            okText: '我知道了',
+            centered: true,
+          });
+          return; // 阻止继续
+        }
+      }
+      
+      // 原有逻辑：保存信息
+      setParticipantInfo(values);
+      localStorage.setItem('participantInfo', JSON.stringify(values));
+      message.success('参与者信息已验证');
+      // 进入设备连接步骤（信息填写之后）
+      setCurrentStepWithHistory('device-test');
+      
+    } catch (error: any) {
+      console.error('验证参与者信息失败:', error);
+      message.error(error.message || '验证失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 设备测试结果

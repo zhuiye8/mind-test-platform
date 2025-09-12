@@ -349,8 +349,20 @@ const ExamSubmissionManager = forwardRef<ExamSubmissionManagerRef, ExamSubmissio
         title="考试提交成功"
         open={submissionState.submitted && !submissionState.error}
         footer={
-          <Button type="primary" onClick={() => window.location.href = '/'}>
-            返回首页
+          <Button
+            type="primary"
+            onClick={() => {
+              try {
+                // 尝试关闭当前页签（在由脚本打开的新窗口/新标签页下有效）
+                const w: any = window as any;
+                w.open('', '_self');
+                w.close();
+              } catch {}
+              // 兜底：无法关闭时，跳转到首页，避免回到填写页
+              setTimeout(() => { window.location.href = '/'; }, 150);
+            }}
+          >
+            关闭页面
           </Button>
         }
         closable={false}

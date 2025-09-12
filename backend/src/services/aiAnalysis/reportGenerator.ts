@@ -9,6 +9,9 @@ import prisma from '../../utils/database';
 import { AI_SERVICE_BASE_URL, DEFAULT_TIMEOUT } from './config';
 import { SessionManager } from './sessionManager';
 import { buildQuestionsDataFromExamResult } from './questionDataBuilder';
+import { matchAIDataForExamResult } from './aiDataMatcher';
+import { buildReportPrompt } from './promptBuilder';
+import { GenericLLMClient } from '../llm/GenericLLMClient';
 import {
   QuestionData,
   AnalyzeQuestionsRequest,
@@ -95,6 +98,21 @@ export class ReportGenerator {
    */
   private async generateReportWithRetry(examResultId: string, maxRetries: number): Promise<ReportResponse> {
     try {
+      // 在生成报告前进行AI数据就绪检查：本地JSON文件是否已落盘
+      // 轻量就绪判据：文件存在且大小>1KB
+      try {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+        const filePath = path.join(process.cwd(), 'storage', 'ai-sessions', `${examResultId}.json`);
+        const st = await fs.stat(filePath).catch(() => null as any);
+        if (!st || st.size < 1024) {
+          return { success: false, error: 'AI_DATA_TRANSFERRING' };
+        }
+      } catch (_) {
+        // 文件系统异常按未就绪处理
+        return { success: false, error: 'AI_DATA_TRANSFERRING' };
+      }
+
       // 获取考试结果和相关数据
       const examResult = await prisma.examResult.findUnique({
         where: { id: examResultId },
@@ -126,49 +144,66 @@ export class ReportGenerator {
         };
       }
 
-      if (!examResult.aiSessionId) {
-        console.log(`[AI分析] 未找到AI会话ID，使用Mock数据生成报告`);
-        // 使用Mock数据生成报告
-        return await this.generateReportWithMockData(examResult);
+      // 确保会话停稳（有会话ID则尽量 stop，一致性更好；无会话也不阻断）
+      if (typeof examResult.aiSessionId === 'string' && examResult.aiSessionId.trim()) {
+        const stopResult = await this.sessionManager.ensureSessionStopped(examResult.aiSessionId);
+        if (!stopResult.success) {
+          console.warn('[AI分析] ensureSessionStopped 非致命失败，继续生成报告:', stopResult.error);
+        }
       }
 
-      // 验证AI会话ID格式
-      if (typeof examResult.aiSessionId !== 'string' || examResult.aiSessionId.trim().length === 0) {
-        return {
-          success: false,
-          error: 'AI会话ID格式无效',
-        };
-      }
-
-      console.log(`[AI分析] 生成报告，会话ID: ${examResult.aiSessionId}`);
-
-      // 🎯 关键步骤：确保AI会话处于stopped状态
-      // AI服务要求在调用analyze_questions前，会话必须先通过end_session停止
-      const stopResult = await this.sessionManager.ensureSessionStopped(examResult.aiSessionId);
-      if (!stopResult.success) {
-        return {
-          success: false,
-          error: stopResult.error || '无法停止AI检测会话',
-        };
-      }
-
-      // 构造题目数据 - 优先使用questionResponses，fallback到answers字段
-      let questionsData: QuestionData[] = [];
-      
-      // 数据获取策略：优先使用questionResponses，fallback到answers
-
-      questionsData = buildQuestionsDataFromExamResult(examResult);
-
+      // 构造题目数据（已有工具）
+      const questionsData: QuestionData[] = buildQuestionsDataFromExamResult(examResult);
       if (questionsData.length === 0) {
-        return {
-          success: false,
-          error: '无法获取考试题目数据，无法生成分析报告'
-        };
+        return { success: false, error: '无法获取考试题目数据，无法生成分析报告' };
       }
-
       console.log(`[AI分析] 构造了 ${questionsData.length} 条题目数据`);
 
-      // 调用AI服务分析
+      // 是否走后端 LLM（默认 true）
+      const backendOnly = process.env.AI_REPORT_BACKEND_ONLY !== 'false';
+      if (backendOnly) {
+        // 1) 匹配 AI 数据（checkpoints/anomalies/aggregates）
+        const { sessionId, matches, aggregates, anomalies } = await matchAIDataForExamResult(examResultId);
+        if (!sessionId) {
+          console.warn('[AI分析] 未找到AI会话数据，报告将缺少多模态融合');
+        }
+
+        // 2) 构建 Prompt
+        const prompt = buildReportPrompt({
+          studentId: examResult.participantId,
+          examId: examResult.examId,
+          questions: questionsData,
+          matches,
+          aggregates,
+          anomalies,
+        });
+
+        // 3) 调用通用 LLM
+        const llm = new GenericLLMClient();
+        const reportText = await llm.generate(prompt);
+
+        // 4) 保存报告
+        const aiReport = await prisma.aIReport.create({
+          data: {
+            examResultId: examResultId,
+            reportType: 'comprehensive',
+            status: 'completed',
+            progress: 100,
+            content: { text: reportText },
+            filename: `ai_report_${examResultId}_${Date.now()}.txt`,
+            fileFormat: 'txt',
+            completedAt: new Date(),
+          },
+        });
+        console.log(`[AI分析] 报告已保存到数据库，ID: ${aiReport.id}`);
+
+        return { success: true, report: reportText, reportFile: aiReport.filename || undefined };
+      }
+
+      // 兼容旧路径：调用 AI 服务 analyze_questions（保留回滚能力）
+      if (!examResult.aiSessionId) {
+        return { success: false, error: '未找到AI分析会话，无法使用外部服务生成报告' };
+      }
       const response = await axios.post<AnalyzeQuestionsResponse>(
         `${AI_SERVICE_BASE_URL}/api/analyze_questions`,
         {
@@ -177,42 +212,27 @@ export class ReportGenerator {
         } as AnalyzeQuestionsRequest,
         {
           timeout: DEFAULT_TIMEOUT.REPORT_GENERATION,
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
         }
       );
 
       if (response.data.success && response.data.report) {
-        console.log(`[AI分析] ✅ 报告生成成功`);
-
-        // 保存AI报告到数据库
         const aiReport = await prisma.aIReport.create({
           data: {
             examResultId: examResultId,
             reportType: 'comprehensive',
             status: 'completed',
             progress: 100,
-            content: { text: response.data.report }, // JSON格式
+            content: { text: response.data.report },
             filename: response.data.report_file || `ai_report_${examResultId}_${Date.now()}.txt`,
             fileFormat: 'txt',
             completedAt: new Date(),
           },
         });
-
-        console.log(`[AI分析] 报告已保存到数据库，ID: ${aiReport.id}`);
-
-        return {
-          success: true,
-          report: response.data.report,
-          reportFile: response.data.report_file,
-        };
+        console.log(`[AI分析] 报告已保存到数据库（外部服务），ID: ${aiReport.id}`);
+        return { success: true, report: response.data.report, reportFile: response.data.report_file || undefined };
       } else {
-        console.error('[AI分析] AI分析失败:', response.data.message);
-        return {
-          success: false,
-          error: response.data.message || 'AI分析失败',
-        };
+        return { success: false, error: response.data.message || 'AI分析失败' };
       }
     } catch (error: any) {
       console.error('[AI分析] 报告生成请求失败:', error);
@@ -229,16 +249,6 @@ export class ReportGenerator {
         error: error.response?.data?.message || error.message || 'AI服务连接失败',
       };
     }
-  }
-
-  /**
-   * 使用Mock数据生成报告 (已废弃)
-   */
-  private async generateReportWithMockData(_examResult: any): Promise<ReportResponse> {
-    return {
-      success: false,
-      error: 'Mock数据报告生成功能已废弃，请使用真实AI会话数据'
-    };
   }
 
   // 题目数据构造已迁移到公共模块 questionDataBuilder.ts

@@ -8,6 +8,89 @@ import os
 from shutil import which
 from typing import Optional, Callable, Dict, Any
 
+# 轻量日志控制（默认 INFO，可通过环境变量 AI_LOG_LEVEL=DEBUG/INFO/WARN/ERROR 调整）
+_LEVELS = {"DEBUG": 10, "INFO": 20, "WARN": 30, "ERROR": 40}
+_LOG_LEVEL = _LEVELS.get(os.environ.get('AI_LOG_LEVEL', 'INFO').upper(), 10)
+
+def _log_debug(msg: str):
+    if _LOG_LEVEL <= 10:
+        print(msg)
+
+def _log_info(msg: str):
+    if _LOG_LEVEL <= 20:
+        print(msg)
+
+def _log_warn(msg: str):
+    if _LOG_LEVEL <= 30:
+        print(msg)
+
+def _log_error(msg: str):
+    if _LOG_LEVEL <= 40:
+        print(msg)
+
+# 导入DataManager用于实时保存数据
+try:
+    from utils.data_manager import DataManager
+    data_manager = DataManager()
+    _log_info("[RTSP] DataManager已导入，将实时保存数据到文件")
+except Exception as e:
+    data_manager = None
+    _log_warn(f"[RTSP] DataManager导入失败: {e}, 将使用内存缓冲")
+
+try:
+    from contract_api.callbacks import callback_service as _cb
+except Exception:
+    _cb = None
+
+def _maybe_send_checkpoint(session_id: Optional[str], model: str, payload: Dict[str, Any], min_interval: float = 1.0):
+    """使用DataManager实时保存数据到文件"""
+    try:
+        if not session_id or not data_manager:
+            return
+        
+        # 根据模型类型调用对应的DataManager方法
+        if 'video' in model.lower() or 'face' in model.lower():
+            data_manager.add_video_emotion(session_id, {
+                'dominant_emotion': payload.get('dominant_emotion', 'neutral'),
+                'emotions': payload.get('emotions', {}),
+                'confidence': payload.get('confidence', 0.0),
+                'face_detected': payload.get('face_detected', True)
+            })
+            _log_debug(f"[RTSP] 保存视频情绪: {session_id}, 主导情绪: {payload.get('dominant_emotion')}")
+            
+        elif 'audio' in model.lower() or 'voice' in model.lower():
+            data_manager.add_audio_emotion(session_id, {
+                'dominant_emotion': payload.get('dominant_emotion', 'neutral'),
+                'emotions': payload.get('emotions', {}),
+                'confidence': payload.get('confidence', 0.0)
+            })
+            _log_debug(f"[RTSP] 保存音频情绪: {session_id}, 主导情绪: {payload.get('dominant_emotion')}")
+            
+        elif 'heart' in model.lower() or 'ppg' in model.lower():
+            data_manager.add_heart_rate_data(session_id, {
+                'heart_rate': payload.get('heart_rate', 0),
+                'confidence': payload.get('confidence', 0.0),
+                'signal_length': payload.get('signal_length', 0)
+            })
+            _log_debug(f"[RTSP] 保存心率数据: {session_id}, 心率: {payload.get('heart_rate')}")
+            
+    except Exception as e:
+        _log_warn(f"[RTSP] DataManager保存失败: {e}")
+
+def ensure_session_created(session_id: str):
+    """确保DataManager中存在该会话，如果不存在则创建"""
+    if data_manager and session_id:
+        try:
+            # 尝试加载会话，如果不存在则自动创建
+            existing = data_manager.load_session(session_id)
+            if not existing:
+                _log_info(f"[RTSP] 创建新的DataManager会话: {session_id}")
+                data_manager.create_session(session_id)
+            else:
+                _log_debug(f"[RTSP] 会话已存在: {session_id}")
+        except Exception as e:
+            _log_warn(f"[RTSP] 检查/创建会话失败: {e}")
+
 _socketio = None
 _app = None
 _session_mapper: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None
@@ -22,7 +105,7 @@ def set_socketio(socketio, app=None):
     global _socketio, _app
     _socketio = socketio
     _app = app
-    print(f"[RTSP] Socket.IO 已设置: {socketio is not None}, App 已设置: {app is not None}")
+    _log_debug(f"[RTSP] Socket.IO 已设置: {socketio is not None}, App 已设置: {app is not None}")
 
 def set_session_mapper(mapper: Callable[[str], Optional[Dict[str, Any]]]):
     """注册从 stream_name 映射到学生会话的回调。
@@ -78,7 +161,7 @@ def get_latest_state(stream_name: Optional[str]) -> Optional[Dict[str, Any]]:
 def _safe_emit(event, data, **kwargs):
     """在后台线程中安全地发送Socket.IO事件"""
     if _socketio is None:
-        print(f"[RTSP] ❌ Socket.IO未初始化，无法发送事件: {event}")
+        _log_warn(f"[RTSP] ❌ Socket.IO未初始化，无法发送事件: {event}")
         return False
     
     try:
@@ -92,7 +175,7 @@ def _safe_emit(event, data, **kwargs):
             _socketio.emit(event, data, **kwargs)
             return True
     except Exception as e:
-        print(f"[RTSP] ❌ 发送事件失败 {event}: {e}")
+        _log_warn(f"[RTSP] ❌ 发送事件失败 {event}: {e}")
         return False
 
 
@@ -151,7 +234,7 @@ class _ConsumerThread(threading.Thread):
                 url = f"{url}{sep}rtsp_transport=tcp"
             ffbin = os.environ.get('FFMPEG_BIN') or which('ffmpeg') or '/usr/bin/ffmpeg'
             if not os.path.exists(ffbin):
-                print(f"[RTSP/FFmpeg] 未找到 ffmpeg 可执行文件（FFMPEG_BIN={os.environ.get('FFMPEG_BIN','')}). 将不启用FFmpeg兜底解码")
+                _log_warn(f"[RTSP/FFmpeg] 未找到 ffmpeg 可执行文件（FFMPEG_BIN={os.environ.get('FFMPEG_BIN','')}). 将不启用FFmpeg兜底解码")
                 self._ff_proc = None
                 return False
             cmd = [
@@ -161,10 +244,10 @@ class _ConsumerThread(threading.Thread):
                 '-pix_fmt', 'bgr24', '-f', 'rawvideo', 'pipe:1'
             ]
             self._ff_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=self._ff_w*self._ff_h*3)
-            print(f"[RTSP/FFmpeg] 已启动FFmpeg解码管道: {cmd}")
+            _log_info(f"[RTSP/FFmpeg] 已启动FFmpeg解码管道")
             return True
         except Exception as e:
-            print(f"[RTSP/FFmpeg] 启动失败: {e}")
+            _log_warn(f"[RTSP/FFmpeg] 启动失败: {e}")
             self._ff_proc = None
             return False
 
@@ -178,7 +261,7 @@ class _ConsumerThread(threading.Thread):
                 url = f"{url}{sep}rtsp_transport=tcp"
             ffbin = os.environ.get('FFMPEG_BIN') or which('ffmpeg') or '/usr/bin/ffmpeg'
             if not os.path.exists(ffbin):
-                print(f"[RTSP/FFmpeg-Audio] 未找到 ffmpeg 可执行文件，音频分析禁用")
+                _log_warn(f"[RTSP/FFmpeg-Audio] 未找到 ffmpeg 可执行文件，音频分析禁用")
                 self._ff_proc_audio = None
                 return False
             # 输出16kHz单声道s16le原始PCM到stdout
@@ -189,10 +272,10 @@ class _ConsumerThread(threading.Thread):
                 '-f', 's16le', 'pipe:1'
             ]
             self._ff_proc_audio = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            print(f"[RTSP/FFmpeg-Audio] 已启动FFmpeg音频解码管道: {cmd}")
+            _log_info(f"[RTSP/FFmpeg-Audio] 已启动FFmpeg音频解码管道")
             return True
         except Exception as e:
-            print(f"[RTSP/FFmpeg-Audio] 启动失败: {e}")
+            _log_warn(f"[RTSP/FFmpeg-Audio] 启动失败: {e}")
             self._ff_proc_audio = None
             return False
 
@@ -251,7 +334,7 @@ class _ConsumerThread(threading.Thread):
                         now = time.time()
                         if _safe_emit('audio_emotion_result', payload):
                             if (now - last_emit) > 1.0:
-                                print(f"[RTSP/AUDIO] ✅ 默认命名空间 audio_emotion_result: stream={self.stream_name}, dom={res.get('dominant_emotion')}")
+                                _log_debug(f"[RTSP/AUDIO] 默认命名空间 audio_emotion_result: stream={self.stream_name}, dom={res.get('dominant_emotion')}")
                         # 备用事件名（与视频/心率一致的模式）
                         _safe_emit('rtsp_audio_analysis', payload)
                         # 广播到/monitor（并推送到房间 stream:<name> 的学生音频事件）
@@ -265,6 +348,22 @@ class _ConsumerThread(threading.Thread):
                             sid = info.get('session_id')
                             student_id = info.get('student_id')
                             sid_default = info.get('sid_default')
+                            # 向后端发送“音频情绪”检查点（节流）
+                        # 保底写入：若未映射到学生会话ID，则使用 stream_name 作为会话键，确保缓冲有数据
+                        if sid:
+                            ensure_session_created(sid)
+                            _maybe_send_checkpoint(sid, 'audio_emotion', {
+                                'dominant_emotion': res_emit.get('dominant_emotion'),
+                                'confidence': res_emit.get('confidence'),
+                                'emotions': res_emit.get('emotions'),
+                            })
+                        else:
+                            ensure_session_created(self.stream_name)
+                            _maybe_send_checkpoint(self.stream_name, 'audio_emotion', {
+                                'dominant_emotion': res_emit.get('dominant_emotion'),
+                                'confidence': res_emit.get('confidence'),
+                                'emotions': res_emit.get('emotions'),
+                            })
                             sid_monitor = info.get('sid_monitor')
                             if sid:
                                 _safe_emit('student_audio_emotion_result', {
@@ -277,14 +376,14 @@ class _ConsumerThread(threading.Thread):
                                 if sid:
                                     payload_target['session_id'] = sid
                                 if _safe_emit('audio_emotion_result', payload_target, room=sid_default):
-                                    print(f"[RTSP/AUDIO] 🎯 定向推送到默认命名空间 audio_emotion_result: sid_default={sid_default}")
+                                    _log_debug(f"[RTSP/AUDIO] 定向推送到默认命名空间 audio_emotion_result: sid_default={sid_default}")
                             if sid_monitor:
                                 # 定向推送到/monitor 上该浏览器连接
                                 if _safe_emit('audio_emotion_result', payload, room=sid_monitor, namespace='/monitor'):
-                                    print(f"[RTSP/AUDIO] 🎯 定向推送到/monitor audio_emotion_result: sid_monitor={sid_monitor}")
+                                    _log_debug(f"[RTSP/AUDIO] 定向推送到/monitor audio_emotion_result: sid_monitor={sid_monitor}")
                         last_emit = now
                     except Exception as e:
-                        print(f"[RTSP/AUDIO] 分析失败: {e}")
+                        _log_warn(f"[RTSP/AUDIO] 分析失败: {e}")
         finally:
             if self._ff_proc_audio is not None:
                 try:
@@ -318,14 +417,14 @@ class _ConsumerThread(threading.Thread):
         while not self._stop.is_set() and cap is None:
             cap = self._open_capture()
             if cap is None:
-                print(f"[RTSP] 尚未可用，等待后重试: {self.rtsp_url}")
+                _log_warn(f"[RTSP] 尚未可用，等待后重试: {self.rtsp_url}")
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 5.0)
 
         if self._stop.is_set():
             return
 
-        print(f"[RTSP] 开始消费: {self.rtsp_url}")
+        _log_info(f"[RTSP] 开始消费: {self.rtsp_url}")
         self.connected = True
         # 启动音频分析线程（与视频并行）
         try:
@@ -333,7 +432,7 @@ class _ConsumerThread(threading.Thread):
                 self._audio_thread = threading.Thread(target=self._audio_worker, daemon=True)
                 self._audio_thread.start()
         except Exception as _e:
-            print(f"[RTSP] 启动音频线程失败: {_e}")
+            _log_warn(f"[RTSP] 启动音频线程失败: {_e}")
         try:
             while not self._stop.is_set():
                 ok, frame = (cap.read() if cap is not None else (False, None))
@@ -356,7 +455,9 @@ class _ConsumerThread(threading.Thread):
                         while not self._stop.is_set() and cap is None:
                             cap = self._open_capture()
                             if cap is None:
-                                print(f"[RTSP] 读取失败，正在重连: {self.rtsp_url}")
+                                if (time.time() - last_diag) > 2.0:
+                                    _log_warn(f"[RTSP] 读取失败，正在重连: {self.rtsp_url}")
+                                    last_diag = time.time()
                                 time.sleep(backoff)
                                 backoff = min(backoff * 2, 5.0)
                         if cap is not None:
@@ -462,6 +563,24 @@ class _ConsumerThread(threading.Thread):
                                         payload_target['session_id'] = sid  # 与当前监控学生会话ID对齐
                                     if _safe_emit('video_emotion_result', payload_target, room=sid_default):
                                         print(f"[RTSP] 🎯 定向推送到默认命名空间 video_emotion_result: sid_default={sid_default}")
+                                # 发送视频情绪检查点（节流，1s一次）
+                                # 发送视频情绪检查点：优先按会话ID；无会话ID则以 stream_name 缓存
+                                if sid:
+                                    ensure_session_created(sid)
+                                    _maybe_send_checkpoint(sid, 'video_emotion', {
+                                        'dominant_emotion': result.get('dominant_emotion'),
+                                        'confidence': result.get('confidence'),
+                                        'emotions': result.get('emotions'),
+                                        'face_detected': result.get('face_detected'),
+                                    })
+                                else:
+                                    ensure_session_created(self.stream_name)
+                                    _maybe_send_checkpoint(self.stream_name, 'video_emotion', {
+                                        'dominant_emotion': result.get('dominant_emotion'),
+                                        'confidence': result.get('confidence'),
+                                        'emotions': result.get('emotions'),
+                                        'face_detected': result.get('face_detected'),
+                                    })
                         except Exception:
                             pass
 
@@ -498,13 +617,13 @@ class _ConsumerThread(threading.Thread):
                         # 额外确认：也尝试在monitor命名空间广播备用事件
                         if _safe_emit('rtsp_heart_rate_analysis', base_hr_payload, namespace='/monitor'):
                             if (now - last_diag) > 2.0:
-                                print(f"[RTSP] ✅ /monitor 额外广播 rtsp_heart_rate_analysis")
+                                _log_debug(f"[RTSP] /monitor 额外广播 rtsp_heart_rate_analysis")
                             
                         # 发送到特定房间（保留房间机制）
                         room = f"stream:{self.stream_name}"
                         if _safe_emit('student.heart_rate', base_hr_payload, room=room, namespace='/monitor'):
                             if (now - last_diag) > 1.5:
-                                print(f"[RTSP] 已发送 student.heart_rate 至房间: {room}")
+                                _log_debug(f"[RTSP] 已发送 student.heart_rate 至房间: {room}")
                         if _session_mapper is not None:
                             info = _session_mapper(self.stream_name)
                             if info and isinstance(info, dict):
@@ -518,14 +637,30 @@ class _ConsumerThread(threading.Thread):
                                         'result': hr
                                     }):
                                         if (now - last_diag) > 1.5:
-                                            print(f"[RTSP] 已转发 student_heart_rate_result: sid={sid}, hr={hr.get('heart_rate')}")
+                                            _log_debug(f"[RTSP] 已转发 student_heart_rate_result: sid={sid}, hr={hr.get('heart_rate')}")
                                 # 关键：复用本机检测通路，定向推送到默认命名空间的特定浏览器连接
                                 if sid_default:
                                     payload_target = dict(base_hr_payload)
                                     if sid:
                                         payload_target['session_id'] = sid
                                     if _safe_emit('heart_rate_result', payload_target, room=sid_default):
-                                        print(f"[RTSP] 🎯 定向推送到默认命名空间 heart_rate_result: sid_default={sid_default}")
+                                        _log_debug(f"[RTSP] 定向推送到默认命名空间 heart_rate_result: sid_default={sid_default}")
+                                # 发送心率检查点（节流），以便后端实时入库
+                                # 发送心率检查点：优先按会话ID；无会话ID则以 stream_name 缓存
+                                if sid:
+                                    ensure_session_created(sid)
+                                    _maybe_send_checkpoint(sid, 'ppg_detector', {
+                                        'heart_rate': hr.get('heart_rate') or hr.get('hr_bpm'),
+                                        'confidence': hr.get('confidence'),
+                                        'detection_state': hr.get('detection_state') or hr.get('state'),
+                                    })
+                                else:
+                                    ensure_session_created(self.stream_name)
+                                    _maybe_send_checkpoint(self.stream_name, 'ppg_detector', {
+                                        'heart_rate': hr.get('heart_rate') or hr.get('hr_bpm'),
+                                        'confidence': hr.get('confidence'),
+                                        'detection_state': hr.get('detection_state') or hr.get('state'),
+                                    })
                     except Exception:
                         pass
                     last_emit = now
@@ -541,7 +676,7 @@ class _ConsumerThread(threading.Thread):
                 except Exception:
                     pass
                 self._ff_proc = None
-            print(f"[RTSP] 结束: {self.rtsp_url}")
+            _log_info(f"[RTSP] 结束: {self.rtsp_url}")
             self.connected = False
 
     def stop(self):

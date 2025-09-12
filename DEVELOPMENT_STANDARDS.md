@@ -141,7 +141,7 @@ def analyze_emotion(session_id, frame_data):
 ### AI服务结构
 ```
 /emotion/
-├── app.py                   # 主入口 (< 200行)
+├── app_lan.py               # 主入口 (< 200行)
 ├── api/                     # API路由
 │   ├── __init__.py
 │   ├── session_routes.py   # 会话路由 (< 150行)

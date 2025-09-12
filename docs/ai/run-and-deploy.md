@@ -2,8 +2,7 @@
 
 ## 本地运行
 - 前置：Python 环境、`pip install -r requirements.txt`（需具备 Flask/Flask-SocketIO 等依赖）
-- 启动（本机）：`python emotion/app.py` → `http://127.0.0.1:5678`
-- 启动（局域网）：`python emotion/app_lan.py` → `http://0.0.0.0:5678`
+- 启动（推荐，本机/局域网一致）：`python emotion/app_lan.py` → `http://<host>:5678`
 
 ## 健康检查
 - `GET /api/health`（契约）

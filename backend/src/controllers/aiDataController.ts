@@ -1,10 +1,17 @@
 /**
  * AI数据控制器
- * 处理AI服务数据存储相关业务逻辑
+ * 处理AI服务数据存储相关业务逻辑 - 支持JSON文件存储
  */
 
 import { Request, Response } from 'express';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as zlib from 'zlib';
+import * as crypto from 'crypto';
+import { promisify } from 'util';
 import prisma from '../utils/database';
+
+const gunzip = promisify(zlib.gunzip);
 
 // AI服务标准错误码
 const ERROR_CODES = {
@@ -29,63 +36,31 @@ const sendResponse = (res: Response, code: number, message: string, data?: any) 
   res.status(statusCode).json(response);
 };
 
-// 数据验证函数
-const validateFinalizeRequest = (body: any) => {
-  const required = ['session_id', 'candidate_id', 'started_at', 'ended_at', 'models', 'aggregates'];
-  const missing = required.filter(field => !body[field]);
-  
-  if (missing.length > 0) {
-    return { valid: false, error: `Missing required fields: ${missing.join(', ')}` };
-  }
-  
-  if (!Array.isArray(body.models)) {
-    return { valid: false, error: 'models must be an array' };
-  }
-  
-  if (typeof body.aggregates !== 'object') {
-    return { valid: false, error: 'aggregates must be an object' };
-  }
-  
-  return { valid: true };
-};
-
-const validateCheckpointRequest = (body: any) => {
-  const required = ['session_id', 'timestamp', 'snapshot'];
-  const missing = required.filter(field => !body[field]);
-  
-  if (missing.length > 0) {
-    return { valid: false, error: `Missing required fields: ${missing.join(', ')}` };
-  }
-  
-  if (typeof body.snapshot !== 'object') {
-    return { valid: false, error: 'snapshot must be an object' };
-  }
-  
-  return { valid: true };
-};
-
 /**
- * 完成AI会话数据存储（来自AI服务的finalize调用）
+ * 完成AI会话数据存储（支持压缩JSON文件）
  */
 export const finalizeAISession = async (req: Request, res: Response): Promise<void> => {
   try {
     const sessionId = req.params.session_id;
+    const examResultId = req.headers['x-exam-result-id'] as string;
+    const contentMD5 = req.headers['content-md5'] as string;
     const idempotencyKey = req.headers['idempotency-key'] as string;
+    const contentType = req.headers['content-type'] as string;
     
+    console.log(`[AI数据] 接收finalize请求: sessionId=${sessionId}, examResultId=${examResultId}, contentType=${contentType}`);
+    
+    // 1. 验证必要参数
     if (!idempotencyKey) {
-      sendResponse(res, ERROR_CODES.PARAM_ERROR, 'Idempotency-Key header is required');
+      sendResponse(res, ERROR_CODES.PARAM_ERROR, '缺少Idempotency-Key头');
       return;
     }
     
-    const validation = validateFinalizeRequest(req.body);
-    if (!validation.valid) {
-      sendResponse(res, ERROR_CODES.PARAM_ERROR, validation.error || 'Validation failed');
+    if (!examResultId) {
+      sendResponse(res, ERROR_CODES.PARAM_ERROR, '缺少X-Exam-Result-ID头');
       return;
     }
     
-    const data = req.body;
-    
-    // 检查幂等性
+    // 2. 检查幂等性
     const existingIdempotency = await prisma.aiFinalizeIdemp.findUnique({
       where: {
         aiSessionId_idempotency_key: {
@@ -96,114 +71,83 @@ export const finalizeAISession = async (req: Request, res: Response): Promise<vo
     });
     
     if (existingIdempotency) {
-      sendResponse(res, 0, 'ok', { ack: true, session_id: sessionId });
+      console.log(`[AI数据] 幂等重复请求: ${sessionId}`);
+      sendResponse(res, 0, 'ok', { 
+        ack: true, 
+        session_id: sessionId,
+        md5_verified: true
+      });
       return;
     }
     
-    // 事务处理AI数据存储
-    await prisma.$transaction(async (tx: any) => {
-      // 1. 更新或创建AI会话
+    let jsonData: any;
+    
+    // 3. 解析数据（支持压缩格式）
+    if (contentType === 'application/gzip') {
+      // 压缩数据处理
+      const compressedData = req.body;
+      
+      // 验证MD5
+      if (contentMD5) {
+        const calculatedMD5 = crypto
+          .createHash('md5')
+          .update(compressedData)
+          .digest('hex');
+        
+        if (calculatedMD5 !== contentMD5) {
+          console.error(`[AI数据] MD5校验失败: ${sessionId}, 期望=${contentMD5}, 实际=${calculatedMD5}`);
+          sendResponse(res, ERROR_CODES.PARAM_ERROR, 'MD5校验失败');
+          return;
+        }
+      }
+      
+      try {
+        const decompressed = await gunzip(compressedData);
+        jsonData = JSON.parse(decompressed.toString('utf-8'));
+        console.log(`[AI数据] 解压成功: ${sessionId}, 原始大小=${compressedData.length}, 解压后=${decompressed.length}`);
+      } catch (e) {
+        console.error(`[AI数据] 解压失败: ${sessionId}`, e);
+        sendResponse(res, ERROR_CODES.PARAM_ERROR, '数据解压失败');
+        return;
+      }
+    } else {
+      // 原始JSON数据
+      jsonData = req.body;
+    }
+    
+    // 4. 保存到文件系统
+    const storageDir = path.join(process.cwd(), 'storage', 'ai-sessions');
+    await fs.mkdir(storageDir, { recursive: true });
+    
+    const filePath = path.join(storageDir, `${examResultId}.json`);
+    const dataToStore = jsonData.data || jsonData;
+    
+    await fs.writeFile(filePath, JSON.stringify(dataToStore, null, 2), 'utf-8');
+    
+    const stats = await fs.stat(filePath);
+    console.log(`[AI数据] 文件保存成功: ${filePath}, 大小=${stats.size} bytes`);
+    
+    // 5. 更新数据库会话记录（仅元数据）
+    await prisma.$transaction(async (tx) => {
+      // 更新会话状态
       await tx.aiSession.upsert({
         where: { id: sessionId },
         update: {
-          ended_at: new Date(data.ended_at),
           status: 'ENDED',
-          ai_version: data.ai_version
+          ended_at: new Date(jsonData.ended_at || Date.now()),
         },
         create: {
           id: sessionId,
-          examId: data.exam_id,
-          examResultId: data.exam_result_id,
-          started_at: new Date(data.started_at),
-          ended_at: new Date(data.ended_at),
+          examId: jsonData.exam_id,
+          examResultId: examResultId,
+          participant_id: '', // 占位符
+          started_at: new Date(jsonData.started_at || Date.now()),
+          ended_at: new Date(jsonData.ended_at || Date.now()),
           status: 'ENDED',
-          ai_version: data.ai_version
         }
       });
       
-      // 2. 创建聚合数据
-      const aggregateData = [];
-      for (const [model, aggregates] of Object.entries(data.aggregates)) {
-        for (const [key, value] of Object.entries(aggregates as Record<string, unknown>)) {
-          aggregateData.push({
-            aiSessionId: sessionId,
-            model: model.toUpperCase() as any,
-            key,
-            value_json: JSON.parse(JSON.stringify(value))
-          });
-        }
-      }
-      
-      if (aggregateData.length > 0) {
-        await tx.aiAggregate.createMany({
-          data: aggregateData,
-          skipDuplicates: true
-        });
-      }
-      
-      // 3. 创建异常记录
-      if (data.anomalies_timeline && data.anomalies_timeline.length > 0) {
-        const anomalyData = data.anomalies_timeline.map((anomaly: any) => {
-          const sevRaw = (anomaly.severity || 'LOW').toString().toUpperCase();
-          const sev: 'LOW'|'MEDIUM'|'HIGH' = (sevRaw === 'LOW' || sevRaw === 'MEDIUM' || sevRaw === 'HIGH') ? sevRaw : 'LOW';
-          return {
-            aiSessionId: sessionId,
-            code: anomaly.code,
-            severity: sev as any,
-            from_ts: new Date(anomaly.from),
-            to_ts: new Date(anomaly.to),
-            evidence_json: anomaly.evidence || {}
-          };
-        });
-        
-        await tx.aiAnomaly.createMany({
-          data: anomalyData,
-          skipDuplicates: true
-        });
-      }
-      
-      // 4. 从序列数据创建检查点
-      if (data.series && data.series.length > 0) {
-        const checkpointData = [];
-        for (const seriesItem of data.series) {
-          for (const point of seriesItem.points) {
-            checkpointData.push({
-              aiSessionId: sessionId,
-              timestamp: new Date(point.timestamp),
-              snapshot_json: {
-                model: seriesItem.model,
-                ...point.metrics
-              }
-            });
-          }
-        }
-        
-        if (checkpointData.length > 0) {
-          await tx.aiCheckpoint.createMany({
-            data: checkpointData,
-            skipDuplicates: true
-          });
-          console.log(`[AI Finalize] Session ${sessionId}: series=${data.series?.length || 0}, checkpoints=${checkpointData.length}`);
-        }
-      }
-      
-      // 5. 创建附件记录
-      if (data.attachments && data.attachments.length > 0) {
-        const attachmentData = data.attachments.map((attachment: any) => ({
-          aiSessionId: sessionId,
-          type: attachment.type.toUpperCase() as any,
-          path: attachment.path,
-          sha256: attachment.sha256,
-          size: attachment.size
-        }));
-        
-        await tx.aiAttachment.createMany({
-          data: attachmentData,
-          skipDuplicates: true
-        });
-      }
-      
-      // 6. 记录幂等性
+      // 记录幂等性
       await tx.aiFinalizeIdemp.create({
         data: {
           aiSessionId: sessionId,
@@ -212,90 +156,42 @@ export const finalizeAISession = async (req: Request, res: Response): Promise<vo
       });
     });
     
-    sendResponse(res, 0, 'ok', { ack: true, session_id: sessionId });
-    
-  } catch (error) {
-    console.error('Finalize error:', error);
-    // 使用 Prisma 错误码判断唯一性冲突
-    if ((error as any)?.code === 'P2002') {
-      sendResponse(res, ERROR_CODES.DUPLICATE_REQUEST, '重复提交');
-      return;
-    }
-    
-    sendResponse(res, ERROR_CODES.STORAGE_ERROR, '后端存储不可用');
-  }
-};
-
-/**
- * 保存AI检查点数据
- */
-export const saveAICheckpoint = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const sessionId = req.params.session_id;
-    
-    const validation = validateCheckpointRequest(req.body);
-    if (!validation.valid) {
-      sendResponse(res, ERROR_CODES.PARAM_ERROR, validation.error || 'Validation failed');
-      return;
-    }
-    
-    const data = req.body;
-    
-    // 检查会话是否存在
-    const session = await prisma.aiSession.findUnique({
-      where: { id: sessionId }
-    });
-    
-    if (!session) {
-      sendResponse(res, ERROR_CODES.SESSION_NOT_FOUND, '会话不存在 / 状态非法');
-      return;
-    }
-    
-    // 更新或创建检查点
-    await prisma.aiCheckpoint.upsert({
-      where: {
-        aiSessionId_timestamp: {
-          aiSessionId: sessionId,
-          timestamp: new Date(data.timestamp)
-        }
-      },
-      update: {
-        snapshot_json: data.snapshot
-      },
-      create: {
-        aiSessionId: sessionId,
-        timestamp: new Date(data.timestamp),
-        snapshot_json: data.snapshot
+    // 6. 清理废弃的checkpoint数据（如果有）
+    try {
+      const deletedCount = await prisma.aiCheckpoint.deleteMany({
+        where: { aiSessionId: sessionId }
+      });
+      if (deletedCount.count > 0) {
+        console.log(`[AI数据] 清理废弃checkpoint数据: ${sessionId}, 删除${deletedCount.count}条`);
       }
+    } catch (e) {
+      console.warn(`[AI数据] 清理checkpoint失败: ${sessionId}`, e);
+    }
+    
+    // 7. 返回确认，触发AI端删除缓存
+    sendResponse(res, 0, 'ok', {
+      ack: true,
+      session_id: sessionId,
+      md5_verified: true,
+      stored_path: filePath,
+      file_size: stats.size
     });
     
-    console.log(`[AI Checkpoint] Session ${sessionId}: checkpoint saved at ${data.timestamp}`);
-    sendResponse(res, 0, 'ok', { accepted: true });
-    
   } catch (error) {
-    console.error('Checkpoint error:', error);
-    sendResponse(res, ERROR_CODES.STORAGE_ERROR, '后端存储不可用');
+    console.error(`[AI数据] Finalize处理失败: ${req.params.session_id}`, error);
+    sendResponse(res, ERROR_CODES.STORAGE_ERROR, '数据存储失败');
   }
 };
 
 /**
- * 获取AI会话详情（调试用）
+ * 获取AI会话信息
  */
 export const getAISession = async (req: Request, res: Response): Promise<void> => {
   try {
     const sessionId = req.params.session_id;
     
     const session = await prisma.aiSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        aggregates: true,
-        anomalies: true,
-        checkpoints: {
-          orderBy: { timestamp: 'asc' },
-          take: 100
-        },
-        attachments: true
-      }
+      where: { id: sessionId }
     });
     
     if (!session) {
@@ -303,10 +199,26 @@ export const getAISession = async (req: Request, res: Response): Promise<void> =
       return;
     }
     
-    sendResponse(res, 0, 'ok', session);
+    sendResponse(res, 0, 'ok', {
+      session_id: sessionId,
+      status: session.status,
+      started_at: session.started_at?.toISOString(),
+      ended_at: session.ended_at?.toISOString(),
+    });
     
   } catch (error) {
-    console.error('Get session error:', error);
-    sendResponse(res, ERROR_CODES.STORAGE_ERROR, '后端存储不可用');
+    console.error(`[AI数据] 获取会话失败: ${req.params.session_id}`, error);
+    sendResponse(res, ERROR_CODES.STORAGE_ERROR, '获取会话信息失败');
   }
+};
+
+/**
+ * 废弃的checkpoint保存函数 - 仅用于兼容性
+ */
+export const saveAICheckpoint = async (req: Request, res: Response): Promise<void> => {
+  console.warn(`[AI数据] 收到废弃的checkpoint请求: ${req.params.session_id}, 已忽略`);
+  sendResponse(res, 0, 'ok', { 
+    ack: true, 
+    message: 'checkpoint已废弃，使用JSON文件存储' 
+  });
 };

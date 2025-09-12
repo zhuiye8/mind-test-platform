@@ -30,6 +30,8 @@ import numpy as np
 from PIL import Image
 from datetime import datetime
 from config import Config
+from lan.stream_utils import compute_stream_name
+from lan.mediamtx import get_mediamtx_host, get_mediamtx_hostname, build_rtsp_url, get_local_ip
 from utils.data_manager import DataManager
 from utils.websocket_handler import WebSocketHandler
 from utils.error_handler import error_handler, ErrorLevel
@@ -208,80 +210,7 @@ model_loading_status = {
     'error': None
 }
 
-# =================== 流名与MediaMTX工具 ===================
-
-def _sanitize_token(s: str) -> str:
-    if not s:
-        return ''
-    allowed = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-'
-    return ''.join([ch for ch in str(s) if ch in allowed])
-
-def compute_stream_name(exam_id: str, student_id: str) -> str:
-    ex = _sanitize_token(exam_id)[:8] if exam_id else 'dev'
-    pid = _sanitize_token(student_id)[:8] if student_id else 'anon'
-    return f"exam-{ex}-user-{pid}"
-
-def get_mediamtx_host() -> str:
-    """
-    获取MediaMTX服务器地址，支持自动检测
-    优先级：环境变量 > 自动检测 > 默认localhost
-    """
-    # 首先检查环境变量
-    if 'MEDIAMTX_HOST' in os.environ:
-        host = os.environ['MEDIAMTX_HOST']
-        print(f"[MediaMTX] 使用环境变量配置: {host}")
-        return host
-    
-    # 自动检测常见地址
-    import socket
-    import requests
-    
-    # 获取当前WSL的网关IP（通常是Windows主机）
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
-        
-        # 从本地IP推断可能的Windows主机IP
-        ip_parts = local_ip.split('.')
-        if len(ip_parts) == 4:
-            # 尝试几个常见的主机地址
-            candidates = [
-                f"{'.'.join(ip_parts[:3])}.1",  # 网关通常是.1
-                "192.168.0.112",  # 用户提到的地址
-                "192.168.1.1",    # 常见网关
-                "172.27.29.1",    # WSL默认网关模式
-            ]
-            
-            for candidate in candidates:
-                try:
-                    url = f"http://{candidate}:8889"
-                    resp = requests.get(url, timeout=2)
-                    if 'mediamtx' in resp.headers.get('Server', '').lower():
-                        print(f"[MediaMTX] 自动检测成功: {url}")
-                        return url
-                except:
-                    continue
-                    
-    except Exception as e:
-        print(f"[MediaMTX] 自动检测失败: {e}")
-    
-    # 回退到默认值
-    default = 'http://127.0.0.1:8889'
-    print(f"[MediaMTX] 使用默认配置: {default}")
-    return default
-
-def get_mediamtx_hostname() -> str:
-    try:
-        from urllib.parse import urlparse
-        u = urlparse(get_mediamtx_host())
-        return u.hostname or '127.0.0.1'
-    except Exception:
-        return '127.0.0.1'
-
-def build_rtsp_url(stream_name: str) -> str:
-    host = get_mediamtx_hostname()
-    return f"rtsp://{host}:8554/{stream_name}"
+# =================== 流名与MediaMTX工具（已拆分至 lan/*.py） ===================
 
 # =================== RTSP 拉流 API（用于从 MediaMTX 拉取学生端流） ===================
 
@@ -747,6 +676,7 @@ def handle_monitor_connect():
         print(f"[Monitor] namespace connected: sid={_req.sid}")
     except Exception:
         print("[Monitor] namespace connected")
+    return True
 
 @socketio.on('monitor/register_sids', namespace='/monitor')
 def monitor_register_sids(data=None):
@@ -772,6 +702,7 @@ def handle_monitor_disconnect():
         print(f"[Monitor] namespace disconnected: sid={_req.sid}")
     except Exception:
         print("[Monitor] namespace disconnected")
+    return True
 
 @app.route('/api/monitor/rooms', methods=['GET'])
 def monitor_rooms():
@@ -1742,11 +1673,13 @@ def handle_connect():
     """客户端连接"""
     print(f'Client connected: {request.sid}')
     emit('connected', {'message': '连接成功'})
+    return True
 
 @socketio.on('disconnect')
 def handle_disconnect():
     """客户端断开连接"""
     print(f'Client disconnected: {request.sid}')
+    return True
 
 @socketio.on('audio_data')
 def handle_audio_data(data):

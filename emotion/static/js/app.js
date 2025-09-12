@@ -1,3 +1,7 @@
+// 调试日志开关（可通过 URL 添加 ?debug=1 开启）
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+const dlog = (...args) => { if (DEBUG) console.log(...args); };
+
 // 全局变量
 let socket = null;
 let monitorSocket = null; // /monitor 命名空间专用 Socket
@@ -183,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-    console.log('初始化情绪分析系统...');
+    dlog('初始化情绪分析系统...');
 
     // 检查URL参数中的模式设置，或根据访问地址智能判断默认模式
     const urlParams = new URLSearchParams(location.search);
@@ -230,7 +234,7 @@ function initializeApp() {
             return;
         }
     } else {
-        console.log('学生监控模式，跳过音视频支持检查');
+    dlog('学生监控模式，跳过音视频支持检查');
     }
 
     // 检查环境并提供提示
@@ -240,7 +244,7 @@ function initializeApp() {
                  /^10\.\d+\.\d+\.\d+$/.test(location.hostname) ||
                  location.hostname.startsWith('172.');
     
-    console.log('环境检查:', { isSecure, isLocal, isLAN, hostname: location.hostname });
+    dlog('环境检查:', { isSecure, isLocal, isLAN, hostname: location.hostname });
     
     if (!isSecure && !isLocal && !isLAN) {
         console.warn('非安全环境，媒体功能可能受限');
@@ -252,7 +256,7 @@ function initializeApp() {
 
 // 检查模型加载状态
 async function checkModelLoadingStatus() {
-    console.log('开始检查模型加载状态...');
+    dlog('开始检查模型加载状态...');
 
     const maxAttempts = 60; // 最多检查60次（约2分钟）
     let attempts = 0;
@@ -403,7 +407,7 @@ function connectWebSocket() {
             return;
         }
 
-        console.log('正在建立Socket.IO连接...');
+        dlog('正在建立Socket.IO连接...');
         elements.connectionStatus.textContent = '连接中...';
         elements.connectionStatus.style.color = '#ffc107';
 
@@ -425,36 +429,21 @@ function connectWebSocket() {
 
         socket.on('connect', function() {
             clearTimeout(connectionTimeout); // 清除连接超时定时器
-            console.log('[WebSocket] 连接成功, Socket ID:', socket.id);
-            console.log('[调试] 教师端正常: WebSocket连接已建立，可以接收学生端数据');
-            console.log('[调试] 当前连接URL:', socket.io.uri);
+            dlog('[WebSocket] 连接成功, Socket ID:', socket.id);
+            dlog('[调试] 教师端正常: WebSocket连接已建立，可以接收学生端数据');
+            dlog('[调试] 当前连接URL:', socket.io.uri);
             elements.connectionStatus.textContent = '已连接';
             elements.connectionStatus.style.color = '#00d4ff';
             
             // 设置全局状态标记
             window.socketReady = true;
             
-            // 测试WebSocket通信
-            console.log('测试WebSocket通信...');
-            
-            // 添加测试按钮到刷新按钮旁边
-            setTimeout(() => {
-                const refreshBtn = document.getElementById('refreshStudents');
-                if (refreshBtn && !document.getElementById('testSocketIO')) {
-                    const testBtn = document.createElement('button');
-                    testBtn.id = 'testSocketIO';
-                    testBtn.className = 'btn-refresh';
-                    testBtn.title = '测试Socket.IO连接';
-                    testBtn.innerHTML = '<i class="fas fa-wifi"></i>';
-                    testBtn.onclick = testSocketIOConnection;
-                    refreshBtn.parentNode.appendChild(testBtn);
-                }
-            }, 1000);
+            //（已移除测试按钮与冗余日志，减少噪音）
         });
 
         socket.on('disconnect', function(reason) {
-            console.log('[WebSocket] 连接断开, 原因:', reason);
-            console.log('[调试] 教师端问题: WebSocket连接断开，无法接收学生端数据');
+            dlog('[WebSocket] 连接断开, 原因:', reason);
+            dlog('[调试] 教师端问题: WebSocket连接断开，无法接收学生端数据');
             elements.connectionStatus.textContent = '已断开';
             elements.connectionStatus.style.color = '#dc3545';
             
@@ -535,94 +524,21 @@ function connectWebSocket() {
         socket.on('video_analysis_progress', handleVideoAnalysisProgress);
         socket.on('video_analysis_complete', handleVideoAnalysisComplete);
         socket.on('error', handleSocketError);
-        // 调试：打印所有事件到控制台
-        try {
-            if (socket && typeof socket.onAny === 'function') {
-                // 打印默认命名空间所有事件，辅助诊断
-                socket.onAny((event, payload) => {
-                    console.log('[DEFAULT SOCKET ANY]', event, payload);
-                });
-            }
-
-            // 主Socket也监听RTSP分析事件（双重保险）
-            socket.on('rtsp_audio_analysis', (data) => {
-                console.log('🎯 [主Socket收到语音情绪分析] rtsp_audio_analysis:', data);
-                try {
-                    if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
-                        const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
-                        if (data.stream_name === streamName) {
-                            console.log('✅ [监控模式] 通过主Socket(备用)更新音频分析结果');
-                            handleAudioEmotionResult({ result: data.result });
-                        }
-                    } else if (currentMode === 'local') {
-                        console.log('✅ [本地模式] 通过主Socket(备用)更新音频分析结果');
+        // 最小事件监听（移除 onAny 全量打印与冗余日志）
+        socket.on('rtsp_audio_analysis', (data) => {
+            try {
+                if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
+                    const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
+                    if (data.stream_name === streamName) {
                         handleAudioEmotionResult({ result: data.result });
                     }
-                } catch (e) { console.warn('❌ 主Socket rtsp_audio_analysis handler error:', e); }
-            });
-            socket.on('video_emotion_result', (data) => {
-                console.log('🎯 [主Socket收到视频情绪分析] video_emotion_result:', data);
-                if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
-                    const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
-                    console.log(`🔍 [主Socket] 比对流名称: 接收=${data.stream_name}, 期望=${streamName}`);
-                    if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过主Socket更新视频分析结果');
-                        updateVideoEmotionDisplay(data.result);
-                    }
                 } else if (currentMode === 'local') {
-                    console.log('✅ [本地模式] 通过主Socket更新视频分析结果');
-                    handleVideoEmotionResult(data);
+                    handleAudioEmotionResult({ result: data.result });
                 }
-            });
-            
-            // 监听备用视频分析事件
-            socket.on('rtsp_video_analysis', (data) => {
-                console.log('🎯 [主Socket收到视频情绪分析] rtsp_video_analysis:', data);
-                if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
-                    const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
-                    if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过主Socket(备用)更新视频分析结果');
-                        updateVideoEmotionDisplay(data.result);
-                    }
-                } else if (currentMode === 'local') {
-                    console.log('✅ [本地模式] 通过主Socket(备用)更新视频分析结果');
-                    handleVideoEmotionResult(data);
-                }
-            });
-            
-            socket.on('heart_rate_result', (data) => {
-                console.log('💓 [主Socket收到心率检测结果] heart_rate_result:', data);
-                if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
-                    const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
-                    console.log(`🔍 [主Socket] 比对心率流名称: 接收=${data.stream_name}, 期望=${streamName}`);
-                    if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过主Socket更新心率结果');
-                        updateHeartRateDisplay(data.result);
-                    }
-                } else if (currentMode === 'local') {
-                    console.log('✅ [本地模式] 通过主Socket更新心率结果');
-                    handleHeartRateResult(data);
-                }
-            });
-            
-            // 监听备用心率分析事件
-            socket.on('rtsp_heart_rate_analysis', (data) => {
-                console.log('💓 [主Socket收到心率检测结果] rtsp_heart_rate_analysis:', data);
-                if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
-                    const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
-                    if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过主Socket(备用)更新心率结果');
-                        updateHeartRateDisplay(data.result);
-                    }
-                } else if (currentMode === 'local') {
-                    console.log('✅ [本地模式] 通过主Socket(备用)更新心率结果');
-                    handleHeartRateResult(data);
-                }
-            });
-            
-        } catch (e) {
-            console.error('设置事件监听失败:', e);
-        }
+            } catch (e) { /* swallow */ }
+        });
+        // 注意：以下事件已在上方统一桥接（monitor→student_* / local→handle*），避免重复监听导致状态被相互覆盖。
+        // 如需最小事件监听，请确保不要与上方监听重复。
         
     } catch (error) {
         console.error('WebSocket连接失败:', error);
@@ -631,46 +547,46 @@ function connectWebSocket() {
 }
 
 function setupEventListeners() {
-    console.log('设置事件监听器...');
+    dlog('设置事件监听器...');
 
     // 主要控制按钮
 
     if (elements.saveRecordBtn) {
         elements.saveRecordBtn.addEventListener('click', saveCurrentRecord);
-        console.log('✓ 保存记录按钮事件已绑定');
+        dlog('✓ 保存记录按钮事件已绑定');
     }
 
     if (elements.clearHistoryBtn) {
         elements.clearHistoryBtn.addEventListener('click', clearHistory);
-        console.log('✓ 清除历史按钮事件已绑定');
+        dlog('✓ 清除历史按钮事件已绑定');
     }
 
     if (elements.detectionRecordsBtn) {
         elements.detectionRecordsBtn.addEventListener('click', openDetectionRecords);
-        console.log('✓ 检测记录按钮事件已绑定');
+        dlog('✓ 检测记录按钮事件已绑定');
     }
 
     // 文件上传
     if (elements.fileUpload) {
         elements.fileUpload.addEventListener('change', handleFileUpload);
-        console.log('✓ 文件上传事件已绑定');
+        dlog('✓ 文件上传事件已绑定');
     }
 
     if (elements.uploadArea) {
         elements.uploadArea.addEventListener('dragover', handleDragOver);
         elements.uploadArea.addEventListener('drop', handleFileDrop);
-        console.log('✓ 拖拽上传事件已绑定');
+        dlog('✓ 拖拽上传事件已绑定');
     }
 
     // 摄像头麦克风控制
     if (elements.startCameraMic) {
         elements.startCameraMic.addEventListener('click', startCameraMic);
-        console.log('✓ 启动摄像头麦克风事件已绑定');
+        dlog('✓ 启动摄像头麦克风事件已绑定');
     }
 
     if (elements.stopDetection) {
         elements.stopDetection.addEventListener('click', stopDetection);
-        console.log('✓ 停止检测事件已绑定');
+        dlog('✓ 停止检测事件已绑定');
     }
 
     // 趋势图控制
@@ -688,7 +604,7 @@ function setupEventListeners() {
     const errorClose = document.querySelector('.error-close');
     if (errorClose) {
         errorClose.addEventListener('click', hideError);
-        console.log('✓ 错误关闭按钮事件已绑定');
+        dlog('✓ 错误关闭按钮事件已绑定');
     }
 }
 
@@ -696,7 +612,7 @@ function setupEventListeners() {
 
 function startMediaRecording() {
     try {
-        console.log('开始启动音频录制...');
+        dlog('开始启动音频录制...');
 
         // 检查媒体流是否存在
         if (!mediaStream) {
@@ -705,7 +621,7 @@ function startMediaRecording() {
 
         // 获取音频轨道
         const audioTracks = mediaStream.getAudioTracks();
-        console.log('检测到音频轨道数量:', audioTracks.length);
+        dlog('检测到音频轨道数量:', audioTracks.length);
 
         if (audioTracks.length === 0) {
             throw new Error('没有检测到音频轨道');
@@ -729,7 +645,7 @@ function startMediaRecording() {
         for (const type of supportedTypes) {
             if (MediaRecorder.isTypeSupported(type)) {
                 mimeType = type;
-                console.log('选择音频格式:', type);
+                dlog('选择音频格式:', type);
                 break;
             }
         }
@@ -738,20 +654,20 @@ function startMediaRecording() {
             console.warn('浏览器不支持任何已知的音频格式，使用默认格式');
         }
 
-        console.log('使用音频格式:', mimeType);
+        dlog('使用音频格式:', mimeType);
 
         // 创建音频录制器
         const options = mimeType ? { mimeType: mimeType } : {};
         mediaRecorder = new MediaRecorder(audioStream, options);
 
         mediaRecorder.ondataavailable = function(event) {
-            console.log('收到音频数据，大小:', event.data.size, 'bytes');
+            if (DEBUG) dlog('收到音频数据，大小:', event.data.size, 'bytes');
 
             if (event.data.size > 0 && socket && socket.connected && currentSessionId) {
                 // 将音频数据转换为base64发送
                 const reader = new FileReader();
                 reader.onload = function() {
-                    console.log('发送音频数据到服务器，会话ID:', currentSessionId);
+                    if (DEBUG) dlog('发送音频数据到服务器，会话ID:', currentSessionId);
                     socket.emit('audio_data', {
                         session_id: currentSessionId,
                         audio_data: reader.result
@@ -783,7 +699,7 @@ function startMediaRecording() {
 
         // 每3秒发送一次音频数据
         mediaRecorder.start(3000);
-        console.log('音频录制器启动成功');
+        dlog('音频录制器启动成功');
 
     } catch (error) {
         console.error('启动媒体录制失败:', error);
@@ -846,12 +762,12 @@ function startVideoAnalysis() {
     // 改进的视频准备就绪检测
     function waitForVideoReady() {
         if (video.videoWidth > 0 && video.videoHeight > 0) {
-            console.log('视频已准备就绪，开始帧捕获');
-            console.log('视频尺寸:', video.videoWidth + 'x' + video.videoHeight);
+            dlog('视频已准备就绪，开始帧捕获');
+            dlog('视频尺寸:', video.videoWidth + 'x' + video.videoHeight);
             // 立即开始第一次捕获
             setTimeout(captureFrame, 100);
         } else {
-            console.log('等待视频准备就绪...');
+            dlog('等待视频准备就绪...');
             // 继续等待
             setTimeout(waitForVideoReady, 200);
         }
@@ -859,17 +775,17 @@ function startVideoAnalysis() {
     
     // 多种事件监听确保视频准备就绪
     video.addEventListener('loadeddata', function() {
-        console.log('视频loadeddata事件触发');
+        dlog('视频loadeddata事件触发');
         waitForVideoReady();
     });
     
     video.addEventListener('loadedmetadata', function() {
-        console.log('视频loadedmetadata事件触发');
+        dlog('视频loadedmetadata事件触发');
         waitForVideoReady();
     });
     
     video.addEventListener('canplay', function() {
-        console.log('视频canplay事件触发');
+        dlog('视频canplay事件触发');
         waitForVideoReady();
     });
     
@@ -937,9 +853,9 @@ function startAudioVisualization() {
         canvas.width = canvas.offsetWidth || 300;
         canvas.height = canvas.offsetHeight || 40;
         
-        // 添加debug信息
-        console.log('音频可视化初始化 - Canvas尺寸:', canvas.width, 'x', canvas.height);
-        console.log('音频可视化初始化 - 频率bin数量:', bufferLength);
+        // 添加debug信息（仅调试模式输出）
+        dlog('音频可视化初始化 - Canvas尺寸:', canvas.width, 'x', canvas.height);
+        dlog('音频可视化初始化 - 频率bin数量:', bufferLength);
 
         function draw() {
             if (!isRecording) return;
@@ -969,9 +885,9 @@ function startAudioVisualization() {
             // 应用非线性缩放来提高敏感度
             const scaledAudioLevel = Math.pow(audioLevel / 100, 0.5) * 100;
             
-            // 添加debug日志（每秒一次）
-            if (!draw.lastLogTime || Date.now() - draw.lastLogTime > 1000) {
-                console.log(`音频级别 - 原始: ${audioLevel.toFixed(1)}%, 缩放: ${scaledAudioLevel.toFixed(1)}%, 峰值: ${(normalizedPeak * 100).toFixed(1)}%`);
+            // 调试日志（每秒一次，默认关闭）
+            if (DEBUG && (!draw.lastLogTime || Date.now() - draw.lastLogTime > 1000)) {
+                dlog(`音频级别 - 原始: ${audioLevel.toFixed(1)}%, 缩放: ${scaledAudioLevel.toFixed(1)}%, 峰值: ${(normalizedPeak * 100).toFixed(1)}%`);
                 draw.lastLogTime = Date.now();
             }
 
@@ -1211,9 +1127,9 @@ function handleVideoEmotionResult(data) {
 
     const result = data.result;
     
-    // 只有检测到人脸时才更新情绪分析结果
+    // 只有检测到人脸时才更新情绪分析结果（local模式）
     if (result.face_detected) {
-        updateVideoEmotionChart(result.emotions);
+        updateVideoEmotionChart(result.emotions, result.dominant_emotion);
         updateVideoEmotionResult({
             dominant: result.dominant_emotion
         });
@@ -1228,14 +1144,15 @@ function handleVideoEmotionResult(data) {
             }
         });
     } else {
-        // 无人脸时重置面部情绪显示
+        // 无人脸：显示未检测到面部，避免与“待检测”（初始态）混淆
+        if (elements.videoDetectionStatus) {
+            elements.videoDetectionStatus.textContent = '未检测到面部';
+        }
+        // 仅清理主导情绪，不影响趋势（趋势可基于历史）
         if (elements.videoDominantEmotion) {
             elements.videoDominantEmotion.textContent = '--';
         }
-        if (elements.videoDetectionStatus) {
-            elements.videoDetectionStatus.textContent = '待检测';
-        }
-        console.log('未检测到人脸，重置面部情绪显示');
+        console.log('未检测到人脸，维持趋势但标记状态');
     }
     
     // 始终更新人脸检测状态指示器
@@ -1802,27 +1719,41 @@ function updateAudioEmotionChart(emotions) {
     audioEmotionChart.update();
 }
 
-function updateVideoEmotionChart(emotions) {
+function updateVideoEmotionChart(emotions, dominant) {
     if (!videoEmotionChart) return;
 
-    // 固定的标签顺序，与初始化时保持完全一致
+    // 固定的标签顺序，与初始化时保持完全一致（7类）
     const fixedLabels = ['快乐', '悲伤', '愤怒', '惊讶', '恐惧', '厌恶', '中性'];
-    const emotionKeyMap = {
-        '快乐': 'happy',
-        '悲伤': 'sad',
-        '愤怒': 'angry', 
-        '惊讶': 'surprise',
-        '恐惧': 'fear',
-        '厌恶': 'disgust',
-        '中性': 'neutral'
+    // 支持多别名：surprise/surprised, fear/fearful, disgust/disgusted
+    const keyAliases = {
+        '快乐': ['happy'],
+        '悲伤': ['sad'],
+        '愤怒': ['angry'],
+        '惊讶': ['surprise', 'surprised'],
+        '恐惧': ['fear', 'fearful'],
+        '厌恶': ['disgust', 'disgusted'],
+        '中性': ['neutral']
     };
 
-    // 按照固定顺序构建数据数组
     const data = fixedLabels.map(label => {
-        const emotionKey = emotionKeyMap[label];
-        const value = emotions[emotionKey] || 0;
-        return (value * 100).toFixed(1);
+        const aliases = keyAliases[label] || [];
+        let v = 0;
+        for (const k of aliases) {
+            const val = emotions[k];
+            if (typeof val === 'number') v += val;
+        }
+        return Number((v * 100).toFixed(1));
     });
+
+    // 若全部为0，使用主导情绪兜底
+    if (!data.some(n => n > 0) && dominant) {
+        const idx = fixedLabels.indexOf((window.emotionTranslations && window.emotionTranslations[dominant]) || dominant);
+        const arr = new Array(fixedLabels.length).fill(0);
+        arr[idx >= 0 ? idx : fixedLabels.indexOf('中性')] = 100;
+        videoEmotionChart.data.datasets[0].data = arr;
+        videoEmotionChart.update();
+        return;
+    }
 
     // 不更改labels，保持与初始化时的顺序一致
     videoEmotionChart.data.datasets[0].data = data;
@@ -2849,7 +2780,7 @@ async function startCameraMic() {
         
         const isSecure = location.protocol === 'https:';
         
-        console.log('环境检查:', {
+        dlog('环境检查:', {
             hostname: location.hostname,
             protocol: location.protocol,
             isLocalhost,
@@ -2862,7 +2793,7 @@ async function startCameraMic() {
         }
 
         // 同时获取摄像头和麦克风权限
-        console.log('请求摄像头和麦克风权限...');
+        dlog('请求摄像头和麦克风权限...');
         
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -3634,8 +3565,12 @@ function initStudentMonitoring() {
 
 // 连接监控命名空间 Socket（用于房间订阅与定向事件）
 function connectMonitorSocket() {
+    // Delegate to split module if available (behavior preserved)
+    if (window.MonitorSockets && typeof window.MonitorSockets.connectMonitorSocket === 'function') {
+        return window.MonitorSockets.connectMonitorSocket();
+    }
     if (monitorSocket && monitorSocket.connected) {
-        console.log('[Monitor] 命名空间已连接');
+        dlog('[Monitor] 命名空间已连接');
         return;
     }
     try {
@@ -3698,23 +3633,16 @@ function connectMonitorSocket() {
         // 【关键修复】在Monitor Socket中监听多种分析事件
         // 监听原始事件名
         monitorSocket.on('video_emotion_result', (data) => {
-            console.log('🎯 [Monitor收到视频情绪分析] video_emotion_result:', data);
             try {
                 if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
                     const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
-                    console.log(`🔍 [Monitor] 比对流名称: 接收=${data.stream_name}, 期望=${streamName}`);
                     if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过Monitor Socket更新视频分析结果');
                         updateVideoEmotionDisplay(data.result);
                     } else {
-                        console.log('❌ [监控模式] 流名称不匹配，忽略事件');
+                        dlog('[Monitor] video_emotion_result 流名称不匹配，忽略');
                     }
                 } else {
-                    console.log('⚠️ [Monitor] 未处理video_emotion_result，条件不满足:', {
-                        currentMode, 
-                        hasStudent: !!currentMonitoringStudent,
-                        hasStreamName: !!data.stream_name
-                    });
+                    dlog('[Monitor] 未处理 video_emotion_result（条件不满足）');
                 }
             } catch (e) { 
                 console.warn('❌ Monitor video_emotion_result handler error:', e); 
@@ -3735,19 +3663,17 @@ function connectMonitorSocket() {
 
         // 监听音频情绪分析事件（RTSP音频 or 兜底转发后服务端回推）
         monitorSocket.on('audio_emotion_result', (data) => {
-            console.log('🎯 [Monitor收到语音情绪分析] audio_emotion_result:', data);
             try {
                 if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
                     const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
                     if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过Monitor Socket更新音频分析结果');
                         handleAudioEmotionResult({ result: data.result });
                     } else {
-                        console.log('❌ [监控模式] 音频流名称不匹配，忽略事件');
+                        dlog('[Monitor] 音频流名称不匹配，忽略');
                     }
                 } else if (currentMode === 'monitor' && currentMonitoringStudent && !data.stream_name) {
                     // 某些兼容分支可能不带 stream_name，通过会话比对（不推荐）
-                    console.log('⚠️ [Monitor] 无 stream_name 的音频事件，尝试直接更新');
+                    dlog('[Monitor] 无 stream_name 的音频事件，尝试直接更新');
                     handleAudioEmotionResult({ result: data.result });
                 }
             } catch (e) {
@@ -3757,12 +3683,10 @@ function connectMonitorSocket() {
 
         // 监听备用事件名
         monitorSocket.on('rtsp_video_analysis', (data) => {
-            console.log('🎯 [Monitor收到视频情绪分析] rtsp_video_analysis:', data);
             try {
                 if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
                     const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
                     if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过Monitor Socket(备用)更新视频分析结果');
                         updateVideoEmotionDisplay(data.result);
                     }
                 }
@@ -3772,13 +3696,10 @@ function connectMonitorSocket() {
         });
         
         monitorSocket.on('heart_rate_result', (data) => {
-            console.log('💓 [Monitor收到心率检测结果] heart_rate_result:', data);
             try {
                 if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
                     const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
-                    console.log(`🔍 [Monitor] 比对心率流名称: 接收=${data.stream_name}, 期望=${streamName}`);
                     if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过Monitor Socket更新心率结果');
                         updateHeartRateDisplay(data.result);
                     }
                 }
@@ -3789,12 +3710,10 @@ function connectMonitorSocket() {
         
         // 监听备用心率事件名
         monitorSocket.on('rtsp_heart_rate_analysis', (data) => {
-            console.log('💓 [Monitor收到心率检测结果] rtsp_heart_rate_analysis:', data);
             try {
                 if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
                     const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
                     if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过Monitor Socket(备用)更新心率结果');
                         updateHeartRateDisplay(data.result);
                     }
                 }
@@ -3802,25 +3721,13 @@ function connectMonitorSocket() {
                 console.warn('❌ Monitor rtsp_heart_rate_analysis handler error:', e); 
             }
         });
-        try {
-            if (monitorSocket && typeof monitorSocket.onAny === 'function') {
-                // 不再过滤事件名，完整打印以便诊断
-                monitorSocket.onAny((event, payload) => {
-                    console.log('[MONITOR SOCKET ANY]', event, payload);
-                });
-            }
-        } catch {}
+        // 移除 monitorSocket.onAny 全量打印，降低日志噪音
     } catch (e) {
         console.warn('[Monitor] 命名空间连接失败:', e);
     }
 }
 
-function _matchesCurrentStudentSession(sessionIdOrStream) {
-    if (!currentMonitoringStudent) return false;
-    const sid = currentMonitoringStudent.session_id;
-    const sname = currentMonitoringStudent.stream_name;
-    return sessionIdOrStream === sid || (sname && sessionIdOrStream === sname);
-}
+// _matchesCurrentStudentSession moved to static/js/utils.js (global)
 
 // 切换工作模式
 function switchMode(mode) {
@@ -4158,16 +4065,7 @@ function disconnectCurrentStudent() {
     showNotification(`已停止监控学生 ${studentId}，后台继续处理中`, 'info');
 }
 
-// 计算流名（与后端规则一致）
-function computeStreamName(exam_id, student_id) {
-    function sanitize(s) {
-        if (!s) return '';
-        return ('' + s).replace(/[^a-zA-Z0-9_-]/g, '');
-    }
-    const ex = (sanitize(exam_id).slice(0, 8) || 'dev');
-    const pid = (sanitize(student_id).slice(0, 8) || 'anon');
-    return `exam-${ex}-user-${pid}`;
-}
+// computeStreamName moved to static/js/utils.js (global)
 
 // 更新视频情绪显示（兼容监控模式）
 function updateVideoEmotionDisplay(result) {
@@ -4177,19 +4075,7 @@ function updateVideoEmotionDisplay(result) {
             videoDominantEmotion: !!elements.videoDominantEmotion,
             videoDetectionStatus: !!elements.videoDetectionStatus
         });
-        // 备用音频事件
-        monitorSocket.on('rtsp_audio_analysis', (data) => {
-            console.log('🎯 [Monitor收到语音情绪分析] rtsp_audio_analysis:', data);
-            try {
-                if (currentMode === 'monitor' && currentMonitoringStudent && data.stream_name) {
-                    const streamName = currentMonitoringStudent.stream_name || computeStreamName(currentMonitoringStudent.exam_id, currentMonitoringStudent.student_id);
-                    if (data.stream_name === streamName) {
-                        console.log('✅ [监控模式] 通过Monitor Socket(备用)更新音频分析结果');
-                        handleAudioEmotionResult({ result: data.result });
-                    }
-                }
-            } catch (e) { console.warn('❌ Monitor rtsp_audio_analysis handler error:', e); }
-        });
+        // 注意：不要在显示函数里绑定事件监听器，以免 monitorSocket 未就绪或重复绑定导致异常。
         
         if (result && result.dominant_emotion) {
             // 兼容：若未显式提供 face_detected，则按是否有有效情绪推断
@@ -4213,12 +4099,25 @@ function updateVideoEmotionDisplay(result) {
             // 同步更新画面覆盖层的人脸检测指示器
             try { updateFaceDetectionIndicator(!!detected); } catch {}
             
-            // 更新图表
-            if (videoEmotionChart && result.emotions) {
-                updateVideoEmotionChart(result.emotions);
-                console.log('✅ [updateVideoEmotionDisplay] 更新情绪图表');
-            } else {
-                console.warn('⚠️ [updateVideoEmotionDisplay] 图表未初始化或无emotions数据');
+            // 更新图表：优先使用 emotions；若缺失则用 dominant_emotion 合成占比
+            if (videoEmotionChart) {
+                if (result.emotions) {
+                    updateVideoEmotionChart(result.emotions, result.dominant_emotion);
+                    console.log('✅ [updateVideoEmotionDisplay] 更新情绪图表');
+                } else if (result.dominant_emotion) {
+                    try {
+                        const labels = (videoEmotionChart.data.labels || []).map(l => String(l));
+                        const cn = (window.emotionTranslations && window.emotionTranslations[result.dominant_emotion]) || result.dominant_emotion;
+                        const idx = labels.indexOf(cn);
+                        const arr = new Array(labels.length).fill(0);
+                        if (idx >= 0) arr[idx] = 100; else arr[labels.indexOf('中性')] = 100; // 兜底中性
+                        videoEmotionChart.data.datasets[0].data = arr;
+                        videoEmotionChart.update();
+                        console.log('✅ [updateVideoEmotionDisplay] 使用主导情绪合成饼图');
+                    } catch (e) { console.warn('⚠️ 合成饼图失败:', e); }
+                } else {
+                    console.warn('⚠️ [updateVideoEmotionDisplay] 图表未初始化或无有效数据');
+                }
             }
             
             console.log('🎉 [视频分析更新成功]', {
@@ -4969,38 +4868,26 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// 测试Socket.IO连接状态
+//（移除调试测试函数，避免生产环境多余日志）
 async function testSocketIOConnection() {
-    console.log('=== Socket.IO连接测试 ===');
-    
+    if (!DEBUG) return;
+    dlog('=== Socket.IO连接测试 ===');
     try {
-        // 1. 检查Socket连接状态
-        console.log('1. Socket连接状态:');
-        console.log('  - socket.connected:', socket?.connected);
-        console.log('  - socket.id:', socket?.id);
-        console.log('  - monitorSocket.connected:', monitorSocket?.connected);
-        console.log('  - monitorSocket.id:', monitorSocket?.id);
-        
-        // 2. 获取AI服务状态
-        console.log('2. 获取AI服务状态:');
+        dlog('1. Socket连接状态:', {
+            socketConnected: socket?.connected,
+            socketId: socket?.id,
+            monitorConnected: monitorSocket?.connected,
+            monitorId: monitorSocket?.id,
+        });
         const statusResp = await fetch('/api/socketio/status');
         const statusData = await statusResp.json();
-        console.log('  - AI服务状态:', statusData);
-        
-        // 3. 发送测试事件
-        console.log('3. 发送测试事件:');
+        dlog('AI服务状态:', statusData);
         if (socket && socket.connected) {
             socket.emit('test_connection', { message: '测试连接', timestamp: new Date().toISOString() });
-            console.log('  - 已发送test_connection事件');
         }
-        
         if (monitorSocket && monitorSocket.connected) {
             monitorSocket.emit('test_monitor', { message: '测试监控', timestamp: new Date().toISOString() });
-            console.log('  - 已发送test_monitor事件');
         }
-        
-        // 4. 检查RTSP状态
-        console.log('4. 检查RTSP状态:');
         const rtspResp = await fetch('/api/rtsp/status');
         const rtspData = await rtspResp.json();
         console.log('  - RTSP状态:', rtspData);

@@ -59,6 +59,14 @@ export const generateAIReport = async (req: Request, res: Response): Promise<voi
         message: result.cached ? 'AI分析报告获取成功（缓存）' : 'AI分析报告生成成功',
       });
     } else {
+      // 特殊处理：AI数据仍在传输中
+      if (result.error === 'AI_DATA_TRANSFERRING') {
+        sendSuccess(res, {
+          transferring: true,
+          message: '正在传输AI分析数据，请稍后再试'
+        }, 202);
+        return;
+      }
       sendError(res, result.error || '生成AI分析报告失败', 500);
     }
   } catch (error) {

@@ -55,16 +55,19 @@ pip install flask flask-socketio numpy pillow requests
 
 3. **启动系统**
 ```bash
-# 方法1：使用优化启动脚本（推荐）
-python start_lan.py
-
-# 方法2：直接启动局域网版本
 python app_lan.py
 ```
 
 4. **访问系统**
-- 教师端：`http://局域网IP:5000`
-- WebSocket：`ws://局域网IP:5000/socket.io/`
+- 教师端：`http://<局域网IP>:5678`
+- WebSocket：`ws://<局域网IP>:5678/socket.io/`
+
+## 🧾 日志与调试
+
+- 前端控制台：默认精简日志，需临时查看详尽日志可在 URL 追加 `?debug=1`。
+- 服务端日志：可通过环境变量控制日志等级：
+  - `AI_LOG_LEVEL=INFO`（默认）/`DEBUG`/`WARN`/`ERROR`
+  - 仅 `rtsp_consumer.py` 的日志受此变量控制，其余模块后续会逐步收敛。
 
 ## 📋 学生端对接示例
 
