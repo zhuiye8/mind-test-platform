@@ -56,7 +56,8 @@
 
 ### 会话管理
 - **独立生命周期**: AI会话不依赖考试结果存在
-- **流映射机制**: stream_name → session_id + student_id
+- **ID对齐机制**: UUID session_id用于数据存储，stream_name仅用于RTSP流
+- **映射机制**: student_sessions[session_id] = { session_id, stream_name, student_id, ... }
 - **状态同步**: 自动向教师端和学生端推送结果
 
 ## 统一口径
@@ -79,3 +80,16 @@
 - **生产环境**: 全Linux部署，Docker容器化
 - **网络要求**: AI服务需访问MediaMTX RTSP端口8554
 - **资源需求**: GPU推荐但非必需，CPU模式可降级运行
+
+## 重要注意事项 ⚠️
+
+### ID对齐关键要求
+- **session_id**: 始终是UUID格式，用于DataManager文件存储
+- **stream_name**: 格式为 `exam-{uuid[:8]}-user-{pid[:8]}`，仅用于RTSP流
+- **严禁混用**: 绝不能使用stream_name作为session_id
+- **映射机制**: RTSP consumer通过`_map_stream_to_session()`查找session_id
+
+### 数据文件管理
+- **文件命名**: 使用session_id.json格式（如：d38c6f7a-32c9-47e7-a4ee-5c0d89641dfe.json）
+- **数据传输**: 压缩JSON + MD5校验传输给后端
+- **文件清理**: finalize成功后删除本地JSON文件

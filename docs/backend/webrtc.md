@@ -1,5 +1,7 @@
 # WebRTC流媒体模块
 
+**Last Updated**: 2025-01-15 - 添加stream_name机制和AI服务映射说明
+
 ## 涉及文件
 - `/backend/src/services/webrtcStreamService.ts` - WebRTC流服务
 - `/backend/src/routes/webrtcRoutes.ts` - WHIP/WHEP代理路由
@@ -11,8 +13,14 @@
 
 ### 数据流传输
 ```
-学生端浏览器 → WHIP协议 → MediaMTX服务器 → RTSP流 → AI服务(Python)
+学生端浏览器 → WHIP协议 → MediaMTX服务器(stream_name) → RTSP流 → AI服务(映射到session_id)
 ```
+
+### Stream命名机制
+- **stream_name格式**: `exam-{examUuid[:8]}-user-{participantId[:8]}`
+- **生成函数**: `generateStreamName(examPublicUuid, participantId)`
+- **用途**: 仅用于RTSP流传输标识，AI服务通过映射获取对应的session_id
+- **示例**: `exam-5e3a23e1-user-2025011`
 
 ### MediaMTX集成
 - **WHIP(WebRTC-HTTP Ingestion Protocol)**: 标准化的WebRTC推流协议
@@ -44,6 +52,8 @@ params.degradationPreference = 'maintain-resolution'; // 分辨率优先
 
 ### WHIP推流代理
 - `POST /api/webrtc/whip` - 代理WHIP推流请求到MediaMTX
+  - 自动将stream_name传递给MediaMTX
+  - URL参数包含stream_name: `/api/webrtc/whip?stream=exam-5e3a23e1-user-2025011`
 - `PATCH /api/webrtc/whip` - 代理WHIP ICE候选更新
 
 ### WHEP拉流代理  
@@ -138,6 +148,8 @@ paths:
 | 码率很低 | 编码参数设置时机错误 | 确保在createOffer前设置 |
 | CORS错误 | 跨域配置不当 | 检查CORS_ORIGIN环境变量 |
 | 连接中断 | 网络波动 | 实现自动重连机制 |
+| AI无数据 | stream_name映射错误 | 检查generateStreamName函数和AI服务映射 |
+| 流名重复 | 多次提交相同参数 | stream_name可重复，但session_id必须唯一 |
 
 ### 性能调优
 1. **监控码率**: 确保达到预期的Mbps级别

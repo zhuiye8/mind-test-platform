@@ -1,5 +1,7 @@
 # 学生答题模块
 
+**Last Updated**: 2025-01-15 - 更新AI集成机制和ID对齐说明
+
 ## 涉及文件
 - `/frontend/src/pages/ParticipantExam.tsx` - 学生答题主页面
 - `/frontend/src/components/ParticipantExam/` - 答题组件模块(9个文件)
@@ -31,7 +33,7 @@
 - `QuestionNavigation` - 题目导航和进度条
 - `ExamSubmissionManager` - 提交管理和确认（支持forwardRef暴露方法）
 - `AIStatusPanel` - AI连接状态面板
-- `useExamFlow/useAIWebRTC` - 业务逻辑Hooks（包含答案隔离机制）
+- `useExamFlow/useAIWebRTC` - 业务逻辑Hooks（AI会话管理，不直接处理WebRTC连接）
 - `ParticipantExam.styles.ts/.animations.css` - 样式动画
 
 ### DeviceCheck模块(7个文件)  
@@ -71,6 +73,8 @@
 - **时间线数据精确到毫秒级记录**: 包含设备检测、答题、AI分析等事件
 - **键盘快捷键支持**: 方向键导航、Ctrl+Enter提交
 - **响应式设计**: 支持移动端和桌面端适配
+- **AI服务降级**: AI服务不可用时aiSessionId返回null，考试仍可正常进行
+- **WebRTC编码时机**: 编码参数必须在createOffer()之前设置，避免质量降级
 
 ## UI/UX 优化（V1）
 - **AI状态仅提示可用性**: 侧栏 AI 状态面板仅显示“检测中/正常/未启用”，不展示心率或情绪等细节，避免对作答造成心理暗示；AI 不可用不影响考试。
@@ -94,4 +98,5 @@
 - **WebRTC流媒体架构**: 前端通过WHIP协议推流到MediaMTX服务器，AI服务从MediaMTX消费RTSP流进行分析
   - **媒体流管理**: MediaStreamContext维护全局流状态，从设备检测阶段持续到考试结束
   - **流传输优化**: 1920x1080@30fps分辨率，最高8Mbps码率，maintain-resolution降级策略
-  - **AI会话管理**: 调用 `/api/public/exams/:uuid/create-ai-session` 创建AI会话，无需直接WebRTC连接
+  - **AI会话管理**: 调用 `/api/public/exams/:uuid/create-ai-session` 创建AI会话，返回UUID格式的aiSessionId
+  - **ID对齐机制**: AI服务通过stream_name映射到session_id，前端无需关心映射细节

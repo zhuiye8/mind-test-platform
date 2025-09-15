@@ -1,5 +1,7 @@
 # 学生端接口模块
 
+**Last Updated**: 2025-01-15 - 添加AI会话集成流程和ID对齐说明
+
 ## 涉及文件
 - `/backend/src/controllers/public/access.controller.ts` - 考试访问控制
 - `/backend/src/controllers/public/session.controller.ts` - 考试会话管理
@@ -29,10 +31,12 @@
 - `POST /api/public/exams/:publicUuid/create-ai-session`
   - 请求：`{ participant_id, participant_name, started_at? }`
   - 响应：`{ examResultId: string|null, aiSessionId: string|null, message, warning? }`
-  - 说明：AI为非必需时，即便失败也允许继续答题（`aiSessionId=null`）。
+  - 功能：创建AI分析会话，生成UUID格式的session_id，建立与stream_name的映射关系
+  - 说明：AI服务不可用时返回 `aiSessionId=null`，考试仍可正常进行
 - `POST /api/public/exams/:publicUuid/retry-ai-session`
   - 请求：`{ participant_id, participant_name }`
   - 响应：`{ examResultId, aiSessionId|null, message, warning? }`
+  - 功能：重试创建AI会话，用于AI服务临时不可用后的恢复
 - `POST /api/public/exams/:publicUuid/check-duplicate`
   - 请求：`{ participant_id }`
   - 响应：`{ canSubmit: boolean }`
@@ -45,11 +49,26 @@
 - 密码验证和访问控制
 - 答题数据提交和存储
 - 时间线事件解析（DISPLAY/SELECT/DESELECT/CHANGE/NAVIGATE/FOCUS/BLUR）→ `question_action_events`
-- AI会话独立管理（不依赖ExamResult提前创建）
+- AI会话独立管理（生成UUID session_id，映射到RTSP stream_name）
 - 延迟ExamResult创建（仅在实际提交时创建）
 - 防重复提交保护
 
+## AI会话集成流程
+1. **前端请求**: 调用 `create-ai-session` 提供 participant_id 和 participant_name
+2. **后端处理**: 
+   - 生成UUID格式的session_id
+   - 计算RTSP流使用的stream_name（格式：`exam-{uuid[:8]}-user-{pid[:8]}`）
+   - 调用AI服务创建会话，传递session_id和stream_name
+3. **AI服务注册**: 
+   - 在student_sessions中建立session_id到stream_name的映射
+   - 返回session_id给后端
+4. **数据库记录**: 在ai_sessions表中记录会话信息
+5. **前端响应**: 返回aiSessionId供前端使用（可能为null表示AI不可用）
+
 ## 注意事项
+- **ID分离**: 严格区分session_id（UUID，数据存储）和stream_name（RTSP流传输）
+- **AI服务降级**: AI不可用时返回aiSessionId=null，考试仍可正常进行
+- **会话映射**: AI服务必须正确建立session_id与stream_name的映射关系
 - 使用publicUuid避免暴露内部ID
 - `questionIdsSnapshot` 用于固定题目顺序（避免后续修改影响进行中的考试）
 - `timeline_data` 解析为结构化记录：
@@ -57,3 +76,8 @@
   - `question_action_events`: 行为事件（类型枚举、payload、时间戳）
 - 支持设备检测数据的原始存储：`exam_interaction_data.deviceTestResults`
 - IP地址记录和防作弊机制
+
+### 常见问题排查
+- **AI会话创建失败**: 检查AI服务是否运行在正确端口(5678)
+- **stream_name映射错误**: 确认generateStreamName函数生成的格式正确
+- **session_id重复**: UUID生成应保证唯一性，避免冲突

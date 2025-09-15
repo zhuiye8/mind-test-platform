@@ -126,3 +126,5 @@ webrtc-demo/mediamtx/mediamtx.exe
 ### Misc ###
 .claude/
 *.dockerignore
+
+backend/storage/ai-sessions*
