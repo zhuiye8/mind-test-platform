@@ -28,6 +28,8 @@ export interface ExamAnswers {
 export interface JwtPayload {
   teacherId: string;
   id: string;
+  name: string;
+  role: 'ADMIN' | 'TEACHER';
   iat?: number;
   exp?: number;
 }
@@ -67,6 +69,7 @@ export interface SubmitExamRequest {
   participant_name: string;
   answers: ExamAnswers;
   started_at?: string; // 答题开始时间（ISO格式字符串）
+  submitted_at?: string; // 提交时间（ISO格式字符串）
   // AI功能相关数据（移动到ExamInteractionData表）
   timeline_data?: any;
   voice_interactions?: any;

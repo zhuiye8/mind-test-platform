@@ -86,11 +86,17 @@ const AIReportViewer: React.FC<AIReportViewerProps> = ({
   };
 
   // 处理后的报告内容
-  const processedReport = fixReportFormat(report);
-  const useMarkdown = hasMarkdownSyntax(processedReport);
+  const safeReport = typeof report === 'string' ? report : '';
+  const hasReportContent = safeReport.trim().length > 0;
+  const processedReport = hasReportContent ? fixReportFormat(safeReport) : '';
+  const useMarkdown = hasReportContent && hasMarkdownSyntax(processedReport);
   // 下载报告为TXT文件
   const downloadTXT = () => {
-    const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+    if (!hasReportContent) {
+      message.warning('当前没有可下载的报告内容');
+      return;
+    }
+    const blob = new Blob([safeReport], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -222,7 +228,7 @@ const AIReportViewer: React.FC<AIReportViewerProps> = ({
 
   // 分享报告（复制到剪贴板）
   const shareReport = async () => {
-    const shareText = `${participantName} - AI心理分析报告\n\n${report}\n\n生成时间：${new Date().toLocaleString()}`;
+    const shareText = `${participantName} - AI心理分析报告\n\n${safeReport || '（当前暂无报告内容）'}\n\n生成时间：${new Date().toLocaleString()}`;
     
     try {
       await navigator.clipboard.writeText(shareText);

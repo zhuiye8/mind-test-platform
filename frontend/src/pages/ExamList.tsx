@@ -22,6 +22,7 @@ const ExamList: React.FC = () => {
   // 基础状态
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(false);
+  const [archivedCount, setArchivedCount] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -78,8 +79,13 @@ const ExamList: React.FC = () => {
     };
   }
 
-  // 使用考试操作hooks
-  const examOperations = useExamOperations(loadExams);
+  // 使用考试操作hooks，在刷新时也更新归档数量
+  const refreshAll = useCallback(() => {
+    loadExams();
+    loadArchivedCount();
+  }, []);
+  
+  const examOperations = useExamOperations(refreshAll);
 
   // 按状态分组考试
   const examsByStatus = useMemo((): Record<ExamStatusType, Exam[]> => {
@@ -115,6 +121,18 @@ const ExamList: React.FC = () => {
       message.error(error instanceof Error ? error.message : '加载考试列表失败');
     } finally {
       setLoading(false);
+    }
+  }
+
+  // 加载归档数量
+  async function loadArchivedCount() {
+    try {
+      const response = await examApi.getArchivedExams({ page: 1, limit: 1 });
+      if (response.success && response.data) {
+        setArchivedCount(response.data.total || 0);
+      }
+    } catch (error) {
+      console.error('获取归档数量失败:', error);
     }
   }
 
@@ -205,6 +223,7 @@ const ExamList: React.FC = () => {
   // 页面加载时获取数据
   useEffect(() => {
     loadExams();
+    loadArchivedCount();
   }, []);
 
   // 监听URL参数变化
@@ -262,7 +281,7 @@ const ExamList: React.FC = () => {
               type="text"
               onClick={() => window.location.href = '/exams/archive'}
             >
-              📦 查看归档 ({(examsByStatus.ARCHIVED || []).length})
+              📦 查看归档 ({archivedCount})
             </Button>
             
             <Button

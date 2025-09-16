@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import path from 'path';
 import { audioFileService } from '../services/audioFileService';
+import { audioProgressService, type AudioProgressEvent } from '../services/audioProgressService';
 import { authenticateToken } from '../middleware/auth';
 import { createLogger } from '../utils/logger';
 
@@ -195,6 +196,47 @@ router.post('/papers/:paperId/batch-generate', authenticateToken, batchGenerateP
  * GET /api/audio/papers/:paperId/status
  */
 router.get('/papers/:paperId/status', authenticateToken, getPaperAudioStatus);
+
+/**
+ * 试卷音频进度Server-Sent Events流 - 需要教师认证
+ * GET /api/audio/papers/:paperId/progress-stream
+ */
+router.get('/papers/:paperId/progress-stream', authenticateToken, (req, res): void => {
+  const { paperId } = req.params;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  const resWithFlush = res as typeof res & { flushHeaders?: () => void };
+  if (typeof resWithFlush.flushHeaders === 'function') {
+    resWithFlush.flushHeaders();
+  }
+
+  const sendEvent = (event: AudioProgressEvent) => {
+    res.write(`event: audio-progress\n`);
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  sendEvent({ type: 'connected', paperId });
+
+  const unsubscribe = audioProgressService.subscribe(paperId, sendEvent);
+
+  const heartbeat = setInterval(() => {
+    sendEvent({ type: 'heartbeat', timestamp: Date.now() });
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+    res.end();
+  });
+});
 
 /**
  * 检查题目是否需要更新语音 - 需要教师认证

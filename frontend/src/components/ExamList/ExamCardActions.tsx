@@ -80,13 +80,30 @@ export const ExamCardActions: React.FC<ExamCardActionsProps> = ({
         </Tooltip>
       );
     } else if (exam.status === ExamStatus.PUBLISHED) {
+      // 添加停止按钮（转为EXPIRED）
       actions.push(
-        <Tooltip key="finish" title="结束考试">
+        <Tooltip key="stop" title="停止考试（可重新编辑）">
+          <Button
+            icon={<StopOutlined />}
+            size="small"
+            style={{ color: '#ff4d4f', borderColor: '#ff4d4f' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStatusChange(exam, ExamStatus.EXPIRED);
+            }}
+          >
+            停止
+          </Button>
+        </Tooltip>
+      );
+      
+      // 保留原有的结束按钮（转为SUCCESS）
+      actions.push(
+        <Tooltip key="finish" title="结束考试（正常完成）">
           <Button
             type="primary"
             icon={<CheckCircleOutlined />}
             size="small"
-            danger
             onClick={(e) => {
               e.stopPropagation();
               onStatusChange(exam, ExamStatus.SUCCESS);
@@ -98,8 +115,26 @@ export const ExamCardActions: React.FC<ExamCardActionsProps> = ({
       );
     }
 
-    // 查看参与者按钮 (已发布或已结束)
-    if (exam.status === ExamStatus.PUBLISHED || exam.status === ExamStatus.SUCCESS) {
+    // 已停止状态 - 可以重新编辑
+    if (exam.status === ExamStatus.EXPIRED) {
+      actions.push(
+        <Tooltip key="redraft" title="重新编辑（转为草稿）">
+          <Button
+            icon={<EditOutlined />}
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStatusChange(exam, ExamStatus.DRAFT);
+            }}
+          >
+            重新编辑
+          </Button>
+        </Tooltip>
+      );
+    }
+
+    // 查看参与者按钮 (已发布、已停止或已结束)
+    if (exam.status === ExamStatus.PUBLISHED || exam.status === ExamStatus.EXPIRED || exam.status === ExamStatus.SUCCESS) {
       actions.push(
         <Tooltip key="participants" title="查看参与者">
           <Button
@@ -161,11 +196,15 @@ export const ExamCardActions: React.FC<ExamCardActionsProps> = ({
       });
     }
 
-    // 删除操作 (草稿和归档状态)
-    if (exam.status === ExamStatus.DRAFT || exam.status === ExamStatus.ARCHIVED) {
+    // 删除操作 (草稿、归档和已停止无提交状态)
+    const canDelete = exam.status === ExamStatus.DRAFT || 
+                      exam.status === ExamStatus.ARCHIVED ||
+                      (exam.status === ExamStatus.EXPIRED && exam.participant_count === 0);
+    
+    if (canDelete) {
       items.push({
         key: 'delete',
-        label: '删除考试',
+        label: exam.status === ExamStatus.ARCHIVED ? '永久删除' : '删除考试',
         icon: <DeleteOutlined />,
         danger: true,
         onClick: () => onDelete(exam)

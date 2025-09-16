@@ -21,10 +21,24 @@ export const teacherLogin = async (req: Request, res: Response): Promise<void> =
     // 查找教师
     const teacher = await prisma.teacher.findUnique({
       where: { teacherId: teacher_id },
+      select: {
+        id: true,
+        teacherId: true,
+        name: true,
+        passwordHash: true,
+        role: true,
+        isActive: true,
+      },
     });
 
     if (!teacher) {
       sendError(res, '工号或密码错误', 401);
+      return;
+    }
+
+    // 检查账户是否被禁用
+    if (!teacher.isActive) {
+      sendError(res, '账户已被禁用，请联系管理员', 401);
       return;
     }
 
@@ -40,6 +54,8 @@ export const teacherLogin = async (req: Request, res: Response): Promise<void> =
     const token = generateToken({
       teacherId: teacher.teacherId,
       id: teacher.id,
+      name: teacher.name,
+      role: teacher.role,
     });
 
     // 返回成功响应
@@ -49,6 +65,7 @@ export const teacherLogin = async (req: Request, res: Response): Promise<void> =
         id: teacher.id,
         name: teacher.name,
         teacher_id: teacher.teacherId,
+        role: teacher.role,
       },
     });
 
@@ -83,6 +100,8 @@ export const verifyAuth = async (req: Request, res: Response): Promise<void> => 
         id: true,
         name: true,
         teacherId: true,
+        role: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -93,11 +112,19 @@ export const verifyAuth = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    // 检查账户是否被禁用
+    if (!teacher.isActive) {
+      sendError(res, '账户已被禁用，请联系管理员', 401);
+      return;
+    }
+
     sendSuccess(res, {
       teacher: {
         id: teacher.id,
         name: teacher.name,
         teacher_id: teacher.teacherId,
+        role: teacher.role,
+        is_active: teacher.isActive,
         created_at: teacher.createdAt,
         updated_at: teacher.updatedAt,
       },

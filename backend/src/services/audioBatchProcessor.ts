@@ -1,5 +1,5 @@
 import { BaiduTTSTaskManager, createBaiduTTSTaskManager, TaskStatusSummary } from './baiduTTSTaskManager';
-import { AudioFileDownloader } from './audioFileDownloader';
+import { AudioFileDownloader, type DownloadResult } from './audioFileDownloader';
 import { TTSProgressController } from './ttsProgressController';
 import path from 'path';
 import crypto from 'crypto';
@@ -104,6 +104,7 @@ export class AudioBatchProcessor {
     voiceSettings?: VoiceSettings,
     onProgress?: (current: number, total: number, questionId: string) => void
   ): Promise<BatchProcessingResult> {
+    const processStartTime = Date.now();
     const batchId = this.generateBatchId();
     const progressController = new TTSProgressController(paperId);
     
@@ -163,7 +164,7 @@ export class AudioBatchProcessor {
       );
 
       // 阶段4: 下载成功的音频文件
-      const downloadResults = await this.downloadSuccessfulTasks(
+      const { downloadResults, failureReasons } = await this.downloadSuccessfulTasks(
         finalSummary,
         taskMap,
         taskTexts,
@@ -175,18 +176,25 @@ export class AudioBatchProcessor {
       const finalResults = await this.updateDatabaseStatus(
         questionsToProcess,
         downloadResults,
+        failureReasons,
         progressController
       );
 
       // 完成处理
-      progressController.complete(finalResults);
+      const totalTime = Date.now() - processStartTime;
+      const resultsWithTime = {
+        ...finalResults,
+        totalTime
+      };
 
-      console.log(`📊 批量音频处理完成: 成功${finalResults.successCount}, 失败${finalResults.failedCount}`);
+      progressController.complete(resultsWithTime);
+
+      console.log(`📊 批量音频处理完成: 成功${resultsWithTime.successCount}, 失败${resultsWithTime.failedCount}`);
       return {
-        success: finalResults.successCount,
-        failed: finalResults.failedCount,
-        errors: finalResults.errors || [],
-        totalTime: finalResults.totalTime,
+        success: resultsWithTime.successCount,
+        failed: resultsWithTime.failedCount,
+        errors: resultsWithTime.errors || [],
+        totalTime: resultsWithTime.totalTime,
         batchId
       };
 
@@ -358,12 +366,26 @@ export class AudioBatchProcessor {
     _taskTexts: Map<string, string>, // taskId -> ttsText (reserved for future use)
     questions: Question[],
     progressController: TTSProgressController
-  ): Promise<Map<string, any>> {
-    const downloadResults = new Map();
+  ): Promise<{ downloadResults: Map<string, DownloadResult>; failureReasons: Map<string, string> }> {
+    const downloadResults = new Map<string, DownloadResult>();
+    const failureReasons = new Map<string, string>();
+
+    const taskIdToQuestionId = new Map<string, string>();
+    for (const [questionId, taskId] of taskMap) {
+      taskIdToQuestionId.set(taskId, questionId);
+    }
 
     if (summary.successTasks.length === 0) {
+      summary.failureTasks.forEach(task => {
+        const questionId = taskIdToQuestionId.get(task.task_id);
+        if (questionId) {
+          const detail = task.task_result?.err_msg || '合成失败';
+          const errorCode = task.task_result?.err_no ? ` (错误码: ${task.task_result.err_no})` : '';
+          failureReasons.set(questionId, `${detail}${errorCode}`);
+        }
+      });
       progressController.updateDownloading(0, 0);
-      return downloadResults;
+      return { downloadResults, failureReasons };
     }
 
     // 获取下载URL映射
@@ -376,8 +398,7 @@ export class AudioBatchProcessor {
     });
     
     // 准备下载任务
-    const downloadTasks = [];
-    const taskIdToQuestionId = new Map<string, string>();
+    const downloadTasks = [] as Array<{ speechUrl: string; outputPath: string; taskId: string }>;
 
     for (const [questionId, taskId] of taskMap) {
       if (downloadUrls.has(taskId)) {
@@ -385,14 +406,12 @@ export class AudioBatchProcessor {
         if (question) {
           const questionDir = path.join(this.audioDir, questionId);
           const outputPath = path.join(questionDir, 'question_audio.mp3');
-          
+
           downloadTasks.push({
             speechUrl: downloadUrls.get(taskId)!,
             outputPath,
             taskId
           });
-          
-          taskIdToQuestionId.set(taskId, questionId);
         }
       }
     }
@@ -420,7 +439,16 @@ export class AudioBatchProcessor {
       }
     }
 
-    return downloadResults;
+    summary.failureTasks.forEach(task => {
+      const questionId = taskIdToQuestionId.get(task.task_id);
+      if (questionId) {
+        const detail = task.task_result?.err_msg || '合成失败';
+        const errorCode = task.task_result?.err_no ? ` (错误码: ${task.task_result.err_no})` : '';
+        failureReasons.set(questionId, `${detail}${errorCode}`);
+      }
+    });
+
+    return { downloadResults, failureReasons };
   }
 
   /**
@@ -428,7 +456,8 @@ export class AudioBatchProcessor {
    */
   private async updateDatabaseStatus(
     questions: Question[],
-    downloadResults: Map<string, any>,
+    downloadResults: Map<string, DownloadResult>,
+    failureReasons: Map<string, string>,
     progressController: TTSProgressController
   ): Promise<{
     successCount: number;
@@ -445,6 +474,7 @@ export class AudioBatchProcessor {
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
       const downloadResult = downloadResults.get(question.id);
+      const failureReason = failureReasons.get(question.id);
       
       try {
         if (downloadResult?.success) {
@@ -453,8 +483,8 @@ export class AudioBatchProcessor {
             where: { questionId: question.id },
             data: {
               status: 'ready',
-              fileSize: downloadResult.fileSize,
-              duration: downloadResult.duration,
+              fileSize: downloadResult.fileSize ?? null,
+              duration: downloadResult.duration ?? null,
               generatedAt: new Date(),
               error: null
             }
@@ -466,11 +496,15 @@ export class AudioBatchProcessor {
             where: { questionId: question.id },
             data: {
               status: 'error',
-              error: downloadResult?.error || '生成失败'
+              error: failureReason || downloadResult?.error || '生成失败',
+              ttsTaskStatus: 'Failure'
             }
           });
           failedCount++;
-          errors.push(`${question.title}: ${downloadResult?.error || '生成失败'}`);
+          if (failureReason) {
+            console.warn(`❌ 题目 ${question.id} TTS失败: ${failureReason}`);
+          }
+          errors.push(`${question.title}: ${failureReason || downloadResult?.error || '生成失败'}`);
         }
         
         // 更新进度
@@ -486,7 +520,7 @@ export class AudioBatchProcessor {
     return {
       successCount,
       failedCount,
-      totalTime: Date.now(),
+      totalTime: 0,
       errors
     };
   }

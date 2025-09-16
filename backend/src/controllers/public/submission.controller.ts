@@ -22,6 +22,7 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
       participant_name, 
       answers, 
       started_at,
+      submitted_at,
       // AI功能相关数据（已简化）
       timeline_data,
       voice_interactions,
@@ -111,16 +112,17 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
 
     try {
       const result = await handleExamSubmission(
-        exam, 
-        participant_id, 
-        participant_name, 
-        normalizedAnswers, 
-        score, 
-        ipAddress, 
-        started_at, 
-        now, 
-        timeline_data, 
-        voice_interactions, 
+        exam,
+        participant_id,
+        participant_name,
+        normalizedAnswers,
+        score,
+        ipAddress,
+        started_at,
+        submitted_at,
+        now,
+        timeline_data,
+        voice_interactions,
         device_test_results
       );
 
@@ -184,11 +186,26 @@ async function handleExamSubmission(
   score: number,
   ipAddress: string,
   started_at: any,
+  submitted_at: any,
   now: Date,
   timeline_data: any,
   voice_interactions: any,
   device_test_results: any
 ): Promise<any> {
+  const serverReceivedAt = now;
+  const parseClientDate = (value: any): Date | null => {
+    if (!value) {
+      return null;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const clientStartedAt = parseClientDate(started_at);
+  const clientSubmittedAt = parseClientDate(submitted_at);
+  const normalizedSubmittedAt = clientSubmittedAt ?? serverReceivedAt;
+  const placeholderEpochMs = new Date('1970-01-01').getTime();
+
   // 检查是否已存在考试结果记录（从createAISession创建的临时记录）
   let result = await prisma.examResult.findUnique({
     where: {
@@ -199,14 +216,41 @@ async function handleExamSubmission(
     },
   });
 
-  if (result && result.submittedAt.getTime() === new Date('1970-01-01').getTime()) {
+  if (result && result.submittedAt.getTime() === placeholderEpochMs) {
     // 更新已存在的临时记录
+    const existingStartedAt = result.startedAt ?? null;
+    const existingStartedAtValid =
+      existingStartedAt instanceof Date &&
+      !Number.isNaN(existingStartedAt.getTime()) &&
+      existingStartedAt.getTime() !== placeholderEpochMs;
+
+    const normalizedStartedAt =
+      clientStartedAt ??
+      (existingStartedAtValid ? existingStartedAt : null) ??
+      normalizedSubmittedAt;
+
+    const totalTimeSeconds = Math.max(
+      0,
+      Math.floor(
+        (normalizedSubmittedAt.getTime() - normalizedStartedAt.getTime()) / 1000
+      )
+    );
+
+    const startedAtUpdate: { startedAt?: Date } = {};
+    if (clientStartedAt) {
+      startedAtUpdate.startedAt = normalizedStartedAt;
+    } else if (!existingStartedAtValid) {
+      startedAtUpdate.startedAt = normalizedStartedAt;
+    }
+
     result = await prisma.examResult.update({
       where: { id: result.id },
       data: {
         answers: normalizedAnswers, // 使用标准化后的答案
         score,
-        submittedAt: now,
+        submittedAt: normalizedSubmittedAt,
+        totalTimeSeconds,
+        ...startedAtUpdate,
       },
     });
 
@@ -262,6 +306,14 @@ async function handleExamSubmission(
     }
   } else {
     // 创建新的考试结果记录（兼容旧的提交方式）
+    const normalizedStartedAt = clientStartedAt ?? normalizedSubmittedAt;
+    const totalTimeSeconds = Math.max(
+      0,
+      Math.floor(
+        (normalizedSubmittedAt.getTime() - normalizedStartedAt.getTime()) / 1000
+      )
+    );
+
     result = await prisma.examResult.create({
       data: {
         examId: exam.id,
@@ -270,8 +322,9 @@ async function handleExamSubmission(
         answers: normalizedAnswers, // 使用标准化后的答案
         score,
         ipAddress,
-        startedAt: started_at ? new Date(started_at) : now,
-        submittedAt: now,
+        startedAt: normalizedStartedAt,
+        submittedAt: normalizedSubmittedAt,
+        totalTimeSeconds,
       },
     });
 

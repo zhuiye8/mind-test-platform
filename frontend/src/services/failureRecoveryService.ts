@@ -99,7 +99,13 @@ export class FailureRecoveryService {
         
         // 检查是否为可重试错误
         if (options.retryableErrors && !options.retryableErrors(error)) {
-          break;
+          // 对于明确不可重试的业务错误（例如409冲突），不要进入降级模式，直接返回失败
+          return {
+            success: false,
+            error: lastError || new Error('Unknown error'),
+            attempts: attempt,
+            degraded: false
+          };
         }
         
         // 如果还有重试机会，计算延迟时间
@@ -238,6 +244,10 @@ export class FailureRecoveryService {
     // HTTP状态码检查
     if (error.response?.status) {
       const status = error.response.status;
+      // 409冲突错误（如重复提交）不应该重试，这是明确的业务逻辑错误
+      if (status === 409) {
+        return false;
+      }
       // 5xx服务器错误和408、429可以重试
       return status >= 500 || status === 408 || status === 429;
     }

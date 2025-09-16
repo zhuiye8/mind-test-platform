@@ -108,16 +108,34 @@ export const getExamResults = async (req: Request, res: Response): Promise<void>
       );
     }
 
-    const formattedResults = results.map(result => ({
-      id: result.id,
-      participant_id: result.participantId,
-      participant_name: result.participantName,
-      answers: result.answers,
-      score: result.score,
-      ip_address: result.ipAddress,
-      started_at: result.startedAt,
-      submitted_at: result.submittedAt,
-    }));
+    const formattedResults = results.map(result => {
+      const startedAt = result.startedAt;
+      const submittedAt = result.submittedAt;
+      let totalTimeSeconds = result.totalTimeSeconds ?? null;
+
+      if (
+        (totalTimeSeconds === null || totalTimeSeconds === undefined) &&
+        startedAt &&
+        submittedAt
+      ) {
+        totalTimeSeconds = Math.max(
+          0,
+          Math.floor((submittedAt.getTime() - startedAt.getTime()) / 1000)
+        );
+      }
+
+      return {
+        id: result.id,
+        participant_id: result.participantId,
+        participant_name: result.participantName,
+        answers: result.answers,
+        score: result.score,
+        ip_address: result.ipAddress,
+        started_at: startedAt,
+        submitted_at: submittedAt,
+        total_time_seconds: totalTimeSeconds,
+      };
+    });
 
     // 构建最终响应结果
     const resultsData = {

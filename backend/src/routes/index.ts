@@ -10,6 +10,7 @@ import audioRoutes from './audioRoutes';
 import aiProxyRoutes from './aiProxyRoutes';
 import aiServiceRoutes from './aiServiceRoutes';
 import webrtcRoutes from './webrtcRoutes';
+import teacherManagementRoutes from './teacherManagementRoutes';
 
 const router = Router();
 
@@ -26,6 +27,7 @@ router.get('/', (_req, res) => {
         exams: '/api/teacher/exams',
         analytics: '/api/teacher/analytics',
         ai: '/api/teacher/ai',
+        management: '/api/teacher/management',
       },
       aiService: '/api/ai-service',
       public: '/api/public',
@@ -41,6 +43,7 @@ router.use('/auth', authRoutes);              // 认证相关路由
 router.use('/teacher/papers', paperRoutes);   // 教师端试卷管理路由
 router.use('/teacher/exams', examRoutes);     // 教师端考试管理路由
 router.use('/teacher/analytics', analyticsRoutes); // 教师端分析数据路由
+router.use('/teacher/management', teacherManagementRoutes); // 教师管理路由（仅管理员）
 router.use('/public', publicRoutes);          // 公开接口路由
 router.use('/teacher/ai', aiRoutes);          // AI功能相关路由（教师端主路径）
 router.use('/reports', reportRoutes);         // AI报告生成路由

@@ -246,13 +246,24 @@ def end_session():
         try:
             from flask import current_app, has_app_context
             import sys
+
             shared_sessions = None
-            if has_app_context() and hasattr(current_app, 'student_sessions') and isinstance(current_app.student_sessions, dict):
-                shared_sessions = current_app.student_sessions
-            else:
+            shared_streams = None
+
+            if has_app_context():
+                if hasattr(current_app, 'student_sessions') and isinstance(current_app.student_sessions, dict):
+                    shared_sessions = current_app.student_sessions
+                if hasattr(current_app, 'student_streams') and isinstance(current_app.student_streams, dict):
+                    shared_streams = current_app.student_streams
+
+            if shared_sessions is None or shared_streams is None:
                 mod = sys.modules.get('app_lan') or sys.modules.get('emotion.app_lan')
-                if mod is not None and hasattr(mod, 'student_sessions') and isinstance(getattr(mod, 'student_sessions'), dict):
-                    shared_sessions = getattr(mod, 'student_sessions')
+                if mod is not None:
+                    if shared_sessions is None and hasattr(mod, 'student_sessions') and isinstance(getattr(mod, 'student_sessions'), dict):
+                        shared_sessions = getattr(mod, 'student_sessions')
+                    if shared_streams is None and hasattr(mod, 'student_streams') and isinstance(getattr(mod, 'student_streams'), dict):
+                        shared_streams = getattr(mod, 'student_streams')
+
             if isinstance(shared_sessions, dict) and session_id in shared_sessions:
                 meta = shared_sessions.get(session_id) or {}
             else:
@@ -289,8 +300,32 @@ def end_session():
                 meta['status'] = 'stopped'
                 from datetime import datetime
                 meta['end_time'] = ContractDataAdapter.to_iso8601_utc(datetime.utcnow())
-        except Exception:
-            pass
+
+                # 复制一份用于通知后再清理
+                session_snapshot = dict(meta)
+
+                # 通知前端删除学生卡片
+                from flask import current_app
+                socketio_instance = getattr(current_app, 'socketio', None)
+                if socketio_instance is not None:
+                    socketio_instance.emit('student_disconnected', {
+                        'session_id': session_id,
+                        'student_id': session_snapshot.get('student_id'),
+                        'stream_name': session_snapshot.get('stream_name'),
+                        'timestamp': datetime.utcnow().isoformat()
+                    })
+                    logger.info(f"[Contract API] 通知前端删除学生卡片: {session_id}")
+
+                # 从共享字典中移除该学生会话和流信息
+                if 'shared_sessions' in locals() and isinstance(shared_sessions, dict):
+                    removed = shared_sessions.pop(session_id, None)
+                    if removed is not None:
+                        logger.info(f"[Contract API] 已从student_sessions移除会话: {session_id}")
+                if 'shared_streams' in locals() and isinstance(shared_streams, dict):
+                    if shared_streams.pop(session_id, None) is not None:
+                        logger.info(f"[Contract API] 已从student_streams移除会话: {session_id}")
+        except Exception as e:
+            logger.warning(f"更新student_sessions状态失败: {e}")
 
         return jsonify(ContractDataAdapter.end_session_response(
             success=True,

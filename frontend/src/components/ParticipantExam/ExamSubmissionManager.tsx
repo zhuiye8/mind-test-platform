@@ -152,7 +152,7 @@ const ExamSubmissionManager = forwardRef<ExamSubmissionManagerRef, ExamSubmissio
         // 清除本地存储的答案（使用包含participantId的键名）
         localStorage.removeItem(`exam_answers_${examUuid}_${participantInfo.participantId}`);
         localStorage.removeItem(`exam_progress_${examUuid}_${participantInfo.participantId}`);
-        localStorage.removeItem('participantInfo');
+        localStorage.removeItem(`participantInfo_${examUuid}`);
 
         logger.info('考试提交成功');
         onSubmissionSuccess?.(response.data);
@@ -352,14 +352,57 @@ const ExamSubmissionManager = forwardRef<ExamSubmissionManagerRef, ExamSubmissio
           <Button
             type="primary"
             onClick={() => {
+              // 方法1：如果是脚本打开的窗口
+              if (window.opener) {
+                window.close();
+                return;
+              }
+              
+              // 方法2：尝试各种关闭方式
               try {
-                // 尝试关闭当前页签（在由脚本打开的新窗口/新标签页下有效）
+                // 尝试直接关闭
+                window.close();
+                
+                // 如果上面失败，尝试其他方法
                 const w: any = window as any;
-                w.open('', '_self');
+                w.open('about:blank', '_self');
                 w.close();
-              } catch {}
-              // 兜底：无法关闭时，跳转到首页，避免回到填写页
-              setTimeout(() => { window.location.href = '/'; }, 150);
+              } catch (error) {
+                console.warn('页签关闭失败:', error);
+              }
+              
+              // 方法3：如果无法关闭，显示提示信息
+              setTimeout(() => {
+                // 替换当前页面内容为完成提示
+                document.body.innerHTML = `
+                  <div style="
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    text-align: center;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                  ">
+                    <div style="
+                      background: rgba(255,255,255,0.1);
+                      padding: 40px;
+                      border-radius: 20px;
+                      backdrop-filter: blur(10px);
+                      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+                    ">
+                      <h1 style="font-size: 3em; margin-bottom: 20px; font-weight: 300;">🎉 考试已完成</h1>
+                      <p style="font-size: 1.5em; margin: 0; opacity: 0.9;">您可以安全地关闭此页签了</p>
+                      <div style="margin-top: 30px; font-size: 0.9em; opacity: 0.7;">
+                        答案已成功提交，感谢您的参与！
+                      </div>
+                    </div>
+                  </div>
+                `;
+                document.title = '考试已完成';
+              }, 100);
             }}
           >
             关闭页面

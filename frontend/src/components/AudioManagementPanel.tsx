@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button,
   Space,
   Typography,
   Table,
   Tooltip,
+  Tag,
   message,
 } from 'antd';
 import {
@@ -16,7 +17,8 @@ import FullScreenLoading from './FullScreenLoading';
 import AudioStatusOverview from './AudioStatusOverview';
 import AudioProgressDisplay from './AudioProgressDisplay';
 import { audioApi } from '../services/audioApi';
-import { useAudioPollingService, POLLING_INDICATOR_STYLES, type ProgressState } from '../services/audioPollingService';
+import { useAudioPollingService, type ProgressState } from '../services/audioPollingService';
+import { useAudioProgressStream, type AudioProgressEvent } from '../services/audioProgressClient';
 import { AudioBatchOperations, AudioSingleOperations } from '../services/audioOperations';
 import { 
   createTableColumns, 
@@ -55,6 +57,7 @@ const AudioManagementPanel: React.FC<AudioManagementPanelProps> = ({
     questions: {}
   });
   const [showFullScreenLoading, setShowFullScreenLoading] = useState(false);
+  const [isUsingPolling, setIsUsingPolling] = useState(false);
 
 
   // 使用聚合接口加载音频状态和题目信息（需先定义，供下方服务初始化使用）
@@ -119,14 +122,164 @@ const AudioManagementPanel: React.FC<AudioManagementPanelProps> = ({
   }, [paperId, questions]);
 
   // 初始化轮询服务和操作服务（在依赖的回调已定义后再初始化）
-  const pollingService = useAudioPollingService(
+  const {
+    startProgressPolling,
+    stopProgressPolling,
+    isPolling: isPollingActive,
+    cleanup: cleanupPolling,
+    createInitialProgressState
+  } = useAudioPollingService(
     paperId,
     setProgressState,
     () => {
       loadAudioStatusAndQuestions();
     }
   );
-  
+
+  const stopStreamRef = useRef<() => void>(() => {});
+
+  const handleProgressEvent = useCallback((event: AudioProgressEvent) => {
+    if (!event || !event.type) {
+      return;
+    }
+
+    if (event.type === 'connected') {
+      return;
+    }
+
+    if (event.type === 'stage-update') {
+      const stageLabels: Record<string, string> = {
+        creating_tasks: '创建任务',
+        waiting_completion: '等待完成',
+        downloading: '下载文件',
+        finalizing: '完成处理',
+        completed: '已完成',
+        error: '错误',
+      };
+      const stageStatus = stageLabels[event.stage as string] || event.stage || 'generating';
+      setIsUsingPolling(false);
+      setProgressState(prev => ({
+        ...prev,
+        overall: {
+          current: event.completedTasks ?? prev.overall.current,
+          total: event.totalTasks ?? prev.overall.total,
+          progress: event.overallProgress ?? prev.overall.progress,
+          status: stageStatus,
+        },
+      }));
+      return;
+    }
+
+    if (event.type === 'batch-status') {
+      const payload = event.payload || {};
+      setIsUsingPolling(false);
+      setProgressState(prev => ({
+        ...prev,
+        overall: {
+          current: payload.completedTasks ?? prev.overall.current,
+          total: payload.totalTasks ?? prev.overall.total,
+          progress: payload.overallProgress ?? prev.overall.progress,
+          status: prev.overall.status,
+        },
+      }));
+      return;
+    }
+
+    if (event.type === 'batch-progress') {
+      if (isPollingActive()) {
+        stopProgressPolling();
+        setIsUsingPolling(false);
+      }
+      const current = event.current ?? 0;
+      const total = event.total ?? 0;
+      setProgressState(prev => ({
+        ...prev,
+        overall: {
+          current,
+          total,
+          progress: total > 0 ? Math.round((current / total) * 100) : prev.overall.progress,
+          status: '生成中',
+        },
+      }));
+      return;
+    }
+
+    if (event.type === 'question-progress' && event.questionId) {
+      setProgressState(prev => ({
+        overall: prev.overall,
+        questions: {
+          ...prev.questions,
+          [event.questionId]: {
+            title: event.questionTitle || prev.questions[event.questionId]?.title || '',
+            status: event.status || prev.questions[event.questionId]?.status || 'pending',
+            progress: typeof event.progress === 'number'
+              ? event.progress
+              : event.status === 'completed'
+                ? 100
+                : event.status === 'start'
+                  ? 0
+                  : prev.questions[event.questionId]?.progress ?? 0,
+            error: event.error,
+          },
+        },
+      }));
+      return;
+    }
+
+    if (event.type === 'batch-completed') {
+      stopStreamRef.current();
+      stopProgressPolling();
+      setIsUsingPolling(false);
+      setProgressState(prev => ({
+        overall: {
+          current: event.result?.successCount ?? prev.overall.current,
+          total: (event.result?.successCount ?? 0) + (event.result?.failedCount ?? 0) || prev.overall.total,
+          progress: 100,
+          status: '已完成',
+        },
+        questions: prev.questions,
+      }));
+      if (event.result?.errors?.length) {
+        message.warning(`部分题目生成失败，共 ${event.result.errors.length} 项`);
+      }
+      loadAudioStatusAndQuestions();
+      onQuestionsUpdate?.();
+      setTimeout(() => {
+        setProgressState(createInitialProgressState());
+      }, 2000);
+      return;
+    }
+
+    if (event.type === 'error') {
+      stopStreamRef.current();
+      stopProgressPolling();
+      setIsUsingPolling(false);
+      setProgressState(prev => ({
+        ...prev,
+        overall: {
+          ...prev.overall,
+          status: 'error',
+        },
+      }));
+      message.error(event.message || '语音生成失败');
+    }
+  }, [createInitialProgressState, isPollingActive, loadAudioStatusAndQuestions, onQuestionsUpdate, setProgressState, stopProgressPolling]);
+
+  const handleProgressError = useCallback((error: Event) => {
+    console.warn('音频进度SSE错误，回退到轮询模式', error);
+    if (!isPollingActive()) {
+      startProgressPolling();
+    }
+    setIsUsingPolling(true);
+  }, [isPollingActive, startProgressPolling]);
+
+  const { start: startProgressStream, stop: stopProgressStream, isConnected: isSSEConnected } = useAudioProgressStream(
+    paperId,
+    handleProgressEvent,
+    handleProgressError
+  );
+  stopStreamRef.current = stopProgressStream;
+
   const batchOperations = new AudioBatchOperations(
     paperId,
     loadAudioStatusAndQuestions,
@@ -143,32 +296,36 @@ const AudioManagementPanel: React.FC<AudioManagementPanelProps> = ({
     try {
       setBatchGenerating(true);
       setShowFullScreenLoading(true);
-      setProgressState(pollingService.createInitialProgressState());
+      setProgressState(createInitialProgressState());
       
-      pollingService.startProgressPolling();
-      
+      const sseStarted = startProgressStream();
+      if (!sseStarted) {
+        startProgressPolling();
+        setIsUsingPolling(true);
+      }
+
       await batchOperations.executeBatchGenerate(forceRegenerate);
     } catch (error) {
       setProgressState(prev => ({
         ...prev,
         overall: { ...prev.overall, status: 'error' }
       }));
+      stopProgressStream();
+      stopProgressPolling();
+      setIsUsingPolling(false);
     } finally {
       setBatchGenerating(false);
       setShowFullScreenLoading(false);
-      pollingService.stopProgressPolling();
-      
-      setTimeout(() => {
-        setProgressState(pollingService.createInitialProgressState());
-      }, 2000);
     }
   };
 
   const handleCancelBatchGeneration = () => {
-    pollingService.stopProgressPolling();
+    stopProgressStream();
+    stopProgressPolling();
+    setIsUsingPolling(false);
     setBatchGenerating(false);
     setShowFullScreenLoading(false);
-    setProgressState(pollingService.createInitialProgressState());
+    setProgressState(createInitialProgressState());
     message.warning('语音生成任务已取消');
   };
 
@@ -182,9 +339,11 @@ const AudioManagementPanel: React.FC<AudioManagementPanelProps> = ({
   // 清理轮询资源
   useEffect(() => {
     return () => {
-      pollingService.cleanup();
+      stopProgressStream();
+      cleanupPolling();
+      setIsUsingPolling(false);
     };
-  }, [pollingService]);
+  }, [cleanupPolling, stopProgressStream]);
 
   // 防离开确认机制
   useEffect(() => {
@@ -231,6 +390,8 @@ const AudioManagementPanel: React.FC<AudioManagementPanelProps> = ({
     return '';
   }, [progressState.questions]);
 
+  const transportMode = isSSEConnected ? 'sse' : (isUsingPolling ? 'polling' : 'sse');
+
   return (
     <div>
       {/* 语音管理头部 */}
@@ -259,15 +420,9 @@ const AudioManagementPanel: React.FC<AudioManagementPanelProps> = ({
             <QuestionCircleOutlined style={{ color: '#8c8c8c', cursor: 'help' }} />
           </Tooltip>
           
-          {/* 轮询状态指示器 */}
-          <Tooltip title="使用轮询机制获取进度更新">
-            <div style={POLLING_INDICATOR_STYLES.container}>
-              <div style={POLLING_INDICATOR_STYLES.dot} />
-              <span style={POLLING_INDICATOR_STYLES.text}>
-                轮询模式
-              </span>
-            </div>
-          </Tooltip>
+          <Tag color={transportMode === 'sse' ? 'green' : 'blue'}>
+            {transportMode === 'sse' ? '实时推送' : '轮询模式'}
+          </Tag>
         </div>
         
         <Space>
@@ -320,6 +475,7 @@ const AudioManagementPanel: React.FC<AudioManagementPanelProps> = ({
         progressState={progressState}
         onCancel={handleCancelBatchGeneration}
         allowCancel={true}
+        transportMode={transportMode}
       />
 
       {/* 题目列表表格 */}

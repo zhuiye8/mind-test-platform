@@ -188,6 +188,7 @@ export const getExamById = async (req: Request, res: Response): Promise<void> =>
       max_attempts: 1,
       show_results: true,
       shuffle_questions: exam.shuffleQuestions,
+      allow_multiple_submissions: exam.allowMultipleSubmissions,
       status: exam.status,
       public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${exam.publicUuid}`,
       created_at: exam.createdAt,
@@ -360,12 +361,48 @@ export const deleteExam = async (req: Request, res: Response): Promise<void> => 
     if (ExamStatusValidator.canDelete(currentStatus, submissionCount)) {
       // 在事务中删除考试和相关数据
       await prisma.$transaction(async (tx) => {
-        // 如果有提交结果，先删除提交结果
+        // 如果有提交结果，先删除相关数据（按外键依赖顺序）
         if (submissionCount > 0) {
-          await tx.examResult.deleteMany({
-            where: { examId },
+          // 1. 先删除QuestionActionEvent（作答事件）
+          await tx.questionActionEvent.deleteMany({
+            where: {
+              examResult: {
+                examId
+              }
+            }
           });
-          console.log(`🗑️ 已删除 ${submissionCount} 条提交记录`);
+          
+          // 2. 删除QuestionResponse（题目答案）
+          await tx.questionResponse.deleteMany({
+            where: {
+              examResult: {
+                examId
+              }
+            }
+          });
+          
+          // 3. 删除ExamInteractionData（交互数据）
+          await tx.examInteractionData.deleteMany({
+            where: {
+              examResult: {
+                examId
+              }
+            }
+          });
+          
+          // 4. 删除AiSession（AI会话）
+          await tx.aiSession.deleteMany({
+            where: {
+              examId
+            }
+          });
+          
+          // 5. 最后删除ExamResult
+          await tx.examResult.deleteMany({
+            where: { examId }
+          });
+          
+          console.log(`🗑️ 已删除 ${submissionCount} 条提交记录及相关数据`);
         }
 
         // 删除考试

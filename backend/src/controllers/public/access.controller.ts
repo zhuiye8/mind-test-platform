@@ -26,6 +26,7 @@ export const getPublicExam = async (req: Request, res: Response): Promise<void> 
         startTime: true,
         endTime: true,
         shuffleQuestions: true,
+        allowMultipleSubmissions: true,
         status: true,
         questionIdsSnapshot: true,
         paper: {
@@ -65,6 +66,7 @@ export const getPublicExam = async (req: Request, res: Response): Promise<void> 
         description: exam.paper.description,
         duration_minutes: exam.durationMinutes,
         shuffle_questions: exam.shuffleQuestions,
+        allow_multiple_submissions: exam.allowMultipleSubmissions,
         password_required: true,
       });
       return;
@@ -104,6 +106,7 @@ export const getPublicExam = async (req: Request, res: Response): Promise<void> 
       description: exam.paper.description,
       duration_minutes: exam.durationMinutes,
       shuffle_questions: exam.shuffleQuestions,
+      allow_multiple_submissions: exam.allowMultipleSubmissions,
       password_required: false,
       questions: formattedQuestions,
     });
@@ -129,6 +132,7 @@ export const verifyExamPassword = async (req: Request, res: Response): Promise<v
         startTime: true,
         endTime: true,
         shuffleQuestions: true,
+        allowMultipleSubmissions: true,
         status: true,
         questionIdsSnapshot: true,
         paper: {
@@ -206,6 +210,7 @@ export const verifyExamPassword = async (req: Request, res: Response): Promise<v
       description: exam.paper.description,
       duration_minutes: exam.durationMinutes,
       shuffle_questions: exam.shuffleQuestions,
+      allow_multiple_submissions: exam.allowMultipleSubmissions,
       password_required: false,
       questions: formattedQuestions,
     });

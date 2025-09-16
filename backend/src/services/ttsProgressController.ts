@@ -352,7 +352,14 @@ export class TTSProgressController {
       this.paperId,
       progressInfo.stage,
       progressInfo.stageProgress,
-      progressInfo.message
+      progressInfo.message,
+      {
+        overallProgress: progressInfo.overallProgress,
+        totalTasks: progressInfo.totalTasks,
+        completedTasks: progressInfo.completedTasks,
+        runningTasks: progressInfo.runningTasks,
+        failedTasks: progressInfo.failedTasks,
+      }
     );
     
     // 详细的进度日志

@@ -134,7 +134,7 @@ export const audioApi = {
   ): Promise<ApiResponse<BatchAudioGenerateResponse>> => {
     try {
       const response = await audioApiClient.post(
-        `/teacher/papers/${paperId}/audio/batch-generate`,
+        `/audio/papers/${paperId}/batch-generate`,
         request
       );
       return response.data;

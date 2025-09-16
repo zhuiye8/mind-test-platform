@@ -195,11 +195,12 @@ active_sessions = {}
 # 存储学生端会话信息（用于教师端监控）
 student_sessions = {}
 
-# 将student_sessions暴露给契约API使用
-app.student_sessions = student_sessions
-
 # 存储学生端视音频流数据
 student_streams = {}
+
+# 将student_sessions/streams 暴露给契约API使用
+app.student_sessions = student_sessions
+app.student_streams = student_streams
 
 # 模型加载状态
 models_loaded = False
@@ -798,6 +799,7 @@ def end_session_api():
             
             # 更新学生会话状态
             if session_id in student_sessions:
+                student_info = student_sessions[session_id]
                 student_sessions[session_id]['status'] = 'stopped'
                 student_sessions[session_id]['end_time'] = datetime.now().isoformat()
                 
@@ -806,6 +808,18 @@ def end_session_api():
                     'session_id': session_id,
                     'timestamp': datetime.now().isoformat()
                 })
+                
+                # 通知前端删除学生卡片
+                socketio.emit('student_disconnected', {
+                    'session_id': session_id,
+                    'student_id': student_info.get('student_id'),
+                    'stream_name': student_info.get('stream_name'),
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+                # 清理student_sessions
+                del student_sessions[session_id]
+                print(f"[AI会话] 学生 {student_info.get('student_id')} 已从监控列表中移除")
             
             # 重置PPG心率检测器
             try:

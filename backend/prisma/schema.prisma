@@ -62,19 +62,30 @@ enum QuestionActionType {
   BLUR      // 离开输入框
 }
 
+// 教师角色枚举
+enum TeacherRole {
+  ADMIN     // 管理员 - 可以管理所有教师账户
+  TEACHER   // 普通教师 - 只能使用考试功能
+}
+
 // 教师表
 model Teacher {
-  id           String   @id @default(uuid())
-  teacherId    String   @unique @map("teacher_id")
+  id           String      @id @default(uuid())
+  teacherId    String      @unique @map("teacher_id")
   name         String
-  passwordHash String   @map("password_hash")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  passwordHash String      @map("password_hash")
+  role         TeacherRole @default(TEACHER)
+  isActive     Boolean     @default(true) @map("is_active") // 账户状态：启用/禁用
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
   // 关系
   papers Paper[]
   exams  Exam[]
 
+  // 数据库索引优化
+  @@index([role, isActive]) // 按角色和状态查询
+  @@index([teacherId]) // 登录查询优化
   @@map("teachers")
 }
 

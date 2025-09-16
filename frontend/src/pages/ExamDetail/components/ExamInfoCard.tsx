@@ -6,6 +6,8 @@ import {
   PlayCircleOutlined,
   StopOutlined,
   CheckCircleOutlined,
+  DeleteOutlined,
+  InboxOutlined,
 } from '@ant-design/icons';
 import type { Exam } from '../../../types';
 import { ExamStatus } from '../../../constants/examStatus';
@@ -21,6 +23,9 @@ type Props = {
   onCopyPublicUrl: () => void;
   onTogglePublish: () => void;
   onFinishExam: () => void;
+  onDelete?: () => void;
+  onArchive?: () => void;
+  onRestore?: () => void;
 };
 
 // 考试信息卡片（包含操作区与 Descriptions 明细）
@@ -33,6 +38,9 @@ const ExamInfoCard: React.FC<Props> = ({
   onCopyPublicUrl,
   onTogglePublish,
   onFinishExam,
+  onDelete,
+  onArchive,
+  onRestore,
 }) => {
   return (
     <Card
@@ -51,9 +59,16 @@ const ExamInfoCard: React.FC<Props> = ({
             </Button>
           )}
           {exam.status === ExamStatus.DRAFT && (
-            <Button type="primary" loading={toggleLoading} icon={<PlayCircleOutlined />} onClick={onTogglePublish}>
-              发布考试
-            </Button>
+            <Space>
+              <Button type="primary" loading={toggleLoading} icon={<PlayCircleOutlined />} onClick={onTogglePublish}>
+                发布考试
+              </Button>
+              {onDelete && (
+                <Button danger icon={<DeleteOutlined />} onClick={onDelete}>
+                  删除考试
+                </Button>
+              )}
+            </Space>
           )}
           {exam.status === ExamStatus.PUBLISHED && (
             <Space>
@@ -63,6 +78,34 @@ const ExamInfoCard: React.FC<Props> = ({
               <Button danger loading={toggleLoading} icon={<StopOutlined />} onClick={onTogglePublish}>
                 停止考试
               </Button>
+            </Space>
+          )}
+          {exam.status === ExamStatus.EXPIRED && onDelete && (
+            <Button danger icon={<DeleteOutlined />} onClick={onDelete}>
+              删除考试
+            </Button>
+          )}
+          {exam.status === ExamStatus.SUCCESS && (
+            <Space>
+              {onArchive && (
+                <Button icon={<InboxOutlined />} onClick={onArchive}>
+                  归档考试
+                </Button>
+              )}
+            </Space>
+          )}
+          {exam.status === ExamStatus.ARCHIVED && (
+            <Space>
+              {onRestore && (
+                <Button icon={<CheckCircleOutlined />} onClick={onRestore}>
+                  恢复考试
+                </Button>
+              )}
+              {onDelete && (
+                <Button danger icon={<DeleteOutlined />} onClick={onDelete}>
+                  删除考试
+                </Button>
+              )}
             </Space>
           )}
         </Space>

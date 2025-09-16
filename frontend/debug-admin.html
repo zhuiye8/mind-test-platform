@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Admin User</title>
+</head>
+<body>
+    <h2>调试管理员菜单显示</h2>
+    <p>这个页面会设置localStorage中的管理员信息，然后跳转到主应用</p>
+    
+    <button onclick="setAdminInfo()">设置管理员信息并跳转</button>
+    <button onclick="setTeacherInfo()">设置普通教师信息并跳转</button>
+    <button onclick="clearInfo()">清除用户信息</button>
+    
+    <script>
+        function setAdminInfo() {
+            const adminInfo = {
+                id: "a62ce8ee-4e75-44bd-8122-e300aba8359b",
+                name: "系统管理员",
+                teacher_id: "T2025001",
+                role: "ADMIN",
+                is_active: true,
+                created_at: "2025-09-05T02:05:32.619Z",
+                updated_at: "2025-09-15T09:39:41.923Z"
+            };
+            
+            localStorage.setItem('teacher_info', JSON.stringify(adminInfo));
+            localStorage.setItem('auth_token', 'debug-admin-token');
+            alert('管理员信息已设置');
+            window.location.href = '/';
+        }
+        
+        function setTeacherInfo() {
+            const teacherInfo = {
+                id: "test-teacher-id",
+                name: "测试教师",
+                teacher_id: "T2025002",
+                role: "TEACHER",
+                is_active: true,
+                created_at: "2025-09-05T02:05:32.619Z",
+                updated_at: "2025-09-15T09:39:41.923Z"
+            };
+            
+            localStorage.setItem('teacher_info', JSON.stringify(teacherInfo));
+            localStorage.setItem('auth_token', 'debug-teacher-token');
+            alert('普通教师信息已设置');
+            window.location.href = '/';
+        }
+        
+        function clearInfo() {
+            localStorage.removeItem('teacher_info');
+            localStorage.removeItem('auth_token');
+            alert('用户信息已清除');
+        }
+        
+        // 显示当前存储的信息
+        const currentInfo = localStorage.getItem('teacher_info');
+        if (currentInfo) {
+            try {
+                const info = JSON.parse(currentInfo);
+                document.body.innerHTML += '<hr><h3>当前用户信息：</h3><pre>' + JSON.stringify(info, null, 2) + '</pre>';
+            } catch (e) {
+                document.body.innerHTML += '<hr><h3>当前用户信息解析失败：</h3><pre>' + currentInfo + '</pre>';
+            }
+        }
+    </script>
+</body>
+</html>

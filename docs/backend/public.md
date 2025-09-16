@@ -41,7 +41,7 @@
   - 请求：`{ participant_id }`
   - 响应：`{ canSubmit: boolean }`
 - `POST /api/public/exams/:publicUuid/submit`
-  - 请求：`{ participant_id, participant_name, answers, started_at?, timeline_data?, voice_interactions?, device_test_results? }`
+  - 请求：`{ participant_id, participant_name, answers, started_at?, submitted_at?, timeline_data?, voice_interactions?, device_test_results? }`
   - 响应：`{ result_id: string, score?: number, message?: string, ai_warning?: string }`
 
 ## 核心功能

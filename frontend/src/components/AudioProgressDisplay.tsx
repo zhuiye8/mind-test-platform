@@ -17,6 +17,8 @@ interface AudioProgressDisplayProps {
   onCancel?: () => void;
   /** 是否允许取消任务 */
   allowCancel?: boolean;
+  /** 进度推送方式 */
+  transportMode?: 'sse' | 'polling';
 }
 
 /**
@@ -64,7 +66,8 @@ const AudioProgressDisplay: React.FC<AudioProgressDisplayProps> = ({
   isGenerating,
   progressState,
   onCancel,
-  allowCancel = true
+  allowCancel = true,
+  transportMode = 'polling'
 }) => {
   // 如果没有在生成中，不显示进度
   if (!isGenerating) {
@@ -74,6 +77,10 @@ const AudioProgressDisplay: React.FC<AudioProgressDisplayProps> = ({
   const { overall, questions } = progressState;
   const questionEntries = Object.entries(questions);
   const hasQuestionProgress = questionEntries.length > 0;
+
+  const transportTag = transportMode === 'sse'
+    ? { color: 'green', label: '实时推送' }
+    : { color: 'blue', label: '轮询模式' };
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -92,8 +99,8 @@ const AudioProgressDisplay: React.FC<AudioProgressDisplayProps> = ({
               </span>
               
               <Space>
-                {/* 轮询模式标识 */}
-                <Tag color="blue">轮询模式</Tag>
+                {/* 推送方式标识 */}
+                <Tag color={transportTag.color}>{transportTag.label}</Tag>
                 
                 {/* 进度统计 */}
                 <Tag 

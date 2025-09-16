@@ -259,7 +259,7 @@ export const CompactExamCard: React.FC<CompactExamCardProps> = ({
 
       {/* 操作按钮条（右下） */}
       <div style={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', gap: 8 }} onClick={(e) => e.stopPropagation()}>
-        {/* 已发布：复制链接、参与者、结束 */}
+        {/* 已发布：复制链接、参与者、停止、结束 */}
         {exam.status === ExamStatus.PUBLISHED && (
           <>
             {exam.public_url && (
@@ -282,6 +282,15 @@ export const CompactExamCard: React.FC<CompactExamCardProps> = ({
                 style={{ color: '#595959', border: '1px solid #d9d9d980', height: 30 }}
               />
             </Tooltip>
+            <Tooltip title="停止考试">
+              <Button
+                type="text"
+                size="small"
+                icon={<StopOutlined style={{ fontSize: 16 }} />}
+                onClick={() => onStatusChange?.(exam, ExamStatus.EXPIRED)}
+                style={{ color: '#faad14', border: '1px solid #faad1430', height: 30 }}
+              />
+            </Tooltip>
             <Tooltip title="结束考试">
               <Button
                 type="text"
@@ -294,7 +303,7 @@ export const CompactExamCard: React.FC<CompactExamCardProps> = ({
           </>
         )}
 
-        {/* 草稿：编辑、发布 */}
+        {/* 草稿：编辑、发布、删除 */}
         {exam.status === ExamStatus.DRAFT && (
           <>
             <Tooltip title="编辑">
@@ -313,6 +322,48 @@ export const CompactExamCard: React.FC<CompactExamCardProps> = ({
                 icon={<PlayCircleOutlined style={{ fontSize: 16 }} />}
                 onClick={() => onStatusChange?.(exam, ExamStatus.PUBLISHED)}
                 style={{ color: '#52c41a', border: '1px solid #52c41a30', height: 30 }}
+              />
+            </Tooltip>
+            <Tooltip title="删除">
+              <Button
+                type="text"
+                size="small"
+                icon={<DeleteOutlined style={{ fontSize: 16 }} />}
+                onClick={() => onDelete?.(exam)}
+                style={{ color: '#ff4d4f', border: '1px solid #ff4d4f30', height: 30 }}
+              />
+            </Tooltip>
+          </>
+        )}
+
+        {/* 已停止：重新编辑、终止、参与者 */}
+        {exam.status === ExamStatus.EXPIRED && (
+          <>
+            <Tooltip title="重新编辑">
+              <Button
+                type="text"
+                size="small"
+                icon={<EditOutlined style={{ fontSize: 16 }} />}
+                onClick={() => onStatusChange?.(exam, ExamStatus.DRAFT)}
+                style={{ color: '#faad14', border: '1px solid #faad1430', height: 30 }}
+              />
+            </Tooltip>
+            <Tooltip title="终止考试">
+              <Button
+                type="text"
+                size="small"
+                icon={<CheckCircleOutlined style={{ fontSize: 16 }} />}
+                onClick={() => onStatusChange?.(exam, ExamStatus.SUCCESS)}
+                style={{ color: '#1890ff', border: '1px solid #1890ff30', height: 30 }}
+              />
+            </Tooltip>
+            <Tooltip title="参与者">
+              <Button
+                type="text"
+                size="small"
+                icon={<EyeOutlined style={{ fontSize: 16 }} />}
+                onClick={() => onViewParticipants?.(exam)}
+                style={{ color: '#595959', border: '1px solid #d9d9d980', height: 30 }}
               />
             </Tooltip>
           </>

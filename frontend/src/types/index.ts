@@ -12,6 +12,8 @@ export interface Teacher {
   id: string;
   name: string;
   teacher_id: string;
+  role: 'ADMIN' | 'TEACHER';
+  is_active?: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -20,9 +20,11 @@ import ExamList from './pages/ExamList';
 import ExamDetail from './pages/ExamDetail';
 import ExamCreate from './pages/ExamCreate';
 import ExamArchive from './pages/ExamArchive';
-import Analytics from './pages/Analytics';
+// import Analytics from './pages/Analytics';
+import TeacherManagement from './pages/TeacherManagement';
 import ParticipantExam from './pages/ParticipantExam';
 import Layout from './components/Layout';
+import AdminRoute from './components/AdminRoute';
 
 // 工具函数
 import { isAuthenticated } from './utils/auth';
@@ -72,7 +74,12 @@ const App: React.FC = () => {
               <Route path="exams/archive" element={<ExamArchive />} />
               <Route path="exams/:examId" element={<ExamDetail />} />
               <Route path="exams/:examId/edit" element={<ExamCreate />} />
-              <Route path="analytics" element={<Analytics />} />
+              <Route path="teacher-management" element={
+                <AdminRoute>
+                  <TeacherManagement />
+                </AdminRoute>
+              } />
+              {/* <Route path="analytics" element={<Analytics />} /> */}
             </Route>
 
             {/* 404重定向 */}

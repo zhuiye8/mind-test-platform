@@ -11,11 +11,15 @@ async function main(): Promise<void> {
 
   const teacher = await prisma.teacher.upsert({
     where: { teacherId: 'T2025001' },
-    update: {},
+    update: {
+      role: 'ADMIN', // 更新现有账户为管理员
+    },
     create: {
       teacherId: 'T2025001',
-      name: '张老师',
+      name: '系统管理员',
       passwordHash: hashedPassword,
+      role: 'ADMIN',
+      isActive: true,
     },
   });
 

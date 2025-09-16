@@ -14,7 +14,14 @@ declare global {
 
 // JWT认证中间件
 export const authenticateToken = (req: Request, res: Response, next: NextFunction): void => {
-  const token = extractTokenFromHeader(req.headers.authorization);
+  let token = extractTokenFromHeader(req.headers.authorization);
+
+  if (!token) {
+    const queryToken = req.query.token;
+    if (typeof queryToken === 'string') {
+      token = queryToken;
+    }
+  }
 
   if (!token) {
     sendError(res, '未提供认证令牌', 401);

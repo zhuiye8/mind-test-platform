@@ -38,6 +38,9 @@ export interface ExamInfo {
   shuffle_questions: boolean;
   allow_empty_answers?: boolean;
   required_questions?: string[];
+  // 是否允许多次提交（后端统一为下划线命名，但为兼容性同时支持驼峰）
+  allow_multiple_submissions?: boolean;
+  allowMultipleSubmissions?: boolean;
 }
 
 export interface ParticipantInfo {
@@ -76,6 +79,7 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
   const { message } = App.useApp();
   const { examUuid } = useParams<{ examUuid: string }>();
   const navigate = useNavigate();
+  const [form] = Form.useForm();
   
   // 步骤历史追踪，用于正确的返回上一步功能
   const [stepHistory, setStepHistory] = useState<ExamStep[]>([]);
@@ -147,7 +151,8 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
     setLoading(true);
     try {
       // 检查是否已经提交过（如果不允许多次提交）
-      if (!exam?.allowMultipleSubmissions) {
+      const allowMulti = (exam as any)?.allowMultipleSubmissions ?? (exam as any)?.allow_multiple_submissions ?? false;
+      if (!allowMulti) {
         console.log('检查重复提交...', { examUuid, participantId: values.participantId });
         const duplicateCheck = await enhancedPublicApi.checkDuplicateSubmission(
           examUuid!, 
@@ -157,6 +162,11 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
         console.log('重复检查响应:', duplicateCheck);
         const canSubmit = duplicateCheck.data?.can_submit ?? duplicateCheck.data?.canSubmit;
         if (!duplicateCheck.success || !canSubmit) {
+          // 清空信息和表单
+          setParticipantInfo(null);
+          localStorage.removeItem(`participantInfo_${examUuid}`);
+          form.resetFields();
+          
           // 显示友好的提示
           Modal.warning({
             title: '您已参加过此考试',
@@ -176,16 +186,40 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
         }
       }
       
-      // 原有逻辑：保存信息
+      // 原有逻辑：保存信息（使用examUuid隔离）
       setParticipantInfo(values);
-      localStorage.setItem('participantInfo', JSON.stringify(values));
+      localStorage.setItem(`participantInfo_${examUuid}`, JSON.stringify(values));
       message.success('参与者信息已验证');
       // 进入设备连接步骤（信息填写之后）
       setCurrentStepWithHistory('device-test');
       
     } catch (error: any) {
       console.error('验证参与者信息失败:', error);
-      message.error(error.message || '验证失败，请稍后重试');
+      
+      // 特殊处理409冲突错误
+      if (error.response?.status === 409) {
+        // 清空信息和表单
+        setParticipantInfo(null);
+        localStorage.removeItem(`participantInfo_${examUuid}`);
+        form.resetFields();
+        
+        Modal.warning({
+          title: '您已参加过此考试',
+          content: (
+            <div>
+              <p>检测到您（学号：<strong>{values.participantId}</strong>）已经提交过本次考试。</p>
+              <p>本考试不允许重复参加。</p>
+              <p style={{ marginTop: 16, color: '#666' }}>
+                如有疑问，请联系监考老师。
+              </p>
+            </div>
+          ),
+          okText: '我知道了',
+          centered: true,
+        });
+      } else {
+        message.error(error.message || '验证失败，请稍后重试');
+      }
     } finally {
       setLoading(false);
     }
@@ -263,17 +297,48 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
     loadExamInfo();
   }, [examUuid]);
 
-  // 恢复参与者信息
+  // 恢复参与者信息（使用examUuid隔离）
   useEffect(() => {
-    const savedInfo = localStorage.getItem('participantInfo');
-    if (savedInfo && !participantInfo) {
-      try {
-        setParticipantInfo(JSON.parse(savedInfo));
-      } catch (error) {
-        console.error('恢复参与者信息失败:', error);
+    if (examUuid) {
+      const savedInfo = localStorage.getItem(`participantInfo_${examUuid}`);
+      if (savedInfo && !participantInfo) {
+        try {
+          setParticipantInfo(JSON.parse(savedInfo));
+        } catch (error) {
+          console.error('恢复参与者信息失败:', error);
+          // 清理损坏的缓存
+          localStorage.removeItem(`participantInfo_${examUuid}`);
+        }
+      } else if (!participantInfo) {
+        // 清理可能存在的旧格式缓存（向后兼容性清理）
+        const oldFormatInfo = localStorage.getItem('participantInfo');
+        if (oldFormatInfo) {
+          console.log('清理旧格式的参与者信息缓存');
+          localStorage.removeItem('participantInfo');
+        }
       }
+
+      // 清理其他考试的缓存，防止污染
+      const currentExamKey = `participantInfo_${examUuid}`;
+      Object.keys(localStorage).forEach(key => {
+        // 清理其他考试的参与者信息
+        if (key.startsWith('participantInfo_') && key !== currentExamKey) {
+          console.log(`清理其他考试的参与者信息: ${key}`);
+          localStorage.removeItem(key);
+        }
+        // 清理其他考试的答案缓存
+        if (key.startsWith('exam_answers_') && !key.includes(examUuid!)) {
+          console.log(`清理其他考试的答案缓存: ${key}`);
+          localStorage.removeItem(key);
+        }
+        // 清理其他考试的进度缓存
+        if (key.startsWith('exam_progress_') && !key.includes(examUuid!)) {
+          console.log(`清理其他考试的进度缓存: ${key}`);
+          localStorage.removeItem(key);
+        }
+      });
     }
-  }, []);
+  }, [examUuid]);
 
   if (loading || !exam) {
     return (
@@ -474,6 +539,7 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
               </div>
 
               <Form
+                form={form}
                 onFinish={handleParticipantInfoSubmit}
                 layout="vertical"
                 size="large"

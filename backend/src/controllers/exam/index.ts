@@ -36,5 +36,6 @@ export {
   toggleExamPublish,
   finishExam,
   archiveExam,
-  restoreExam
+  restoreExam,
+  updateExamStatus
 } from './lifecycle.controller';

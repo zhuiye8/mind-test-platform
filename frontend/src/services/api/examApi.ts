@@ -4,6 +4,7 @@
 
 import api from './base';
 import type { ApiResponse, Exam, CreateExamForm, ExamResult, Question } from '../../types';
+import type { ExamStatusType } from '../../constants/examStatus';
 
 export const examApi = {
   // 获取考试列表
@@ -53,6 +54,25 @@ export const examApi = {
   // 恢复考试（archived → success）
   restoreExam: (examId: string): Promise<ApiResponse<Exam>> => {
     return api.put(`/teacher/exams/${examId}/restore`);
+  },
+
+  // 通用状态更新（支持 EXPIRED / DRAFT 等转换）
+  updateStatus: (
+    examId: string,
+    toStatus: ExamStatusType,
+    options?: { fromStatus?: ExamStatusType; reason?: string }
+  ): Promise<ApiResponse<Exam>> => {
+    const payload: Record<string, unknown> = { to_status: toStatus };
+
+    if (options?.fromStatus) {
+      payload.from_status = options.fromStatus;
+    }
+
+    if (options?.reason) {
+      payload.reason = options.reason;
+    }
+
+    return api.put(`/teacher/exams/${examId}/status`, payload);
   },
 
   // 获取归档考试列表

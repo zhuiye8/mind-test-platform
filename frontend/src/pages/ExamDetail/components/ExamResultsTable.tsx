@@ -69,7 +69,21 @@ const ExamResultsTable: React.FC<Props> = ({
       key: 'duration',
       width: 140,
       render: (_, record: ExamResult) => {
-        const durationSeconds = record.total_time_seconds || 0;
+        const fallbackSeconds =
+          record.started_at && record.submitted_at
+            ? Math.max(
+                0,
+                Math.floor(
+                  (new Date(record.submitted_at).getTime() -
+                    new Date(record.started_at).getTime()) /
+                    1000
+                )
+              )
+            : 0;
+        const durationSeconds =
+          record.total_time_seconds !== undefined && record.total_time_seconds !== null
+            ? record.total_time_seconds
+            : fallbackSeconds;
         if (durationSeconds < 60) {
           const color = durationSeconds <= 10 ? '#ff4d4f' : '#52c41a';
           return <Text style={{ color }}>{durationSeconds}秒</Text>;

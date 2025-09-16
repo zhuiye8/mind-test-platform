@@ -14,6 +14,7 @@ export const publicApi = {
     password_required: boolean;
     questions?: Question[];
     shuffle_questions: boolean;
+    allow_multiple_submissions?: boolean;
   }>> => {
     return api.get(`/public/exams/${uuid}`);
   },
@@ -27,6 +28,7 @@ export const publicApi = {
     questions: Question[];
     shuffle_questions: boolean;
     description?: string;
+    allow_multiple_submissions?: boolean;
   }>> => {
     return api.post(`/public/exams/${uuid}/verify`, { password });
   },
@@ -69,6 +71,7 @@ export const publicApi = {
     participant_name: string;
     answers: Record<string, any>;
     started_at?: string; // 答题开始时间（ISO格式）
+    submitted_at?: string; // 提交时间（ISO格式）
     // AI功能相关数据（已简化）
     timeline_data?: any;
     voice_interactions?: any;

@@ -27,9 +27,10 @@ interface ParticipantAnswerDetailProps {
 }
 
 interface QuestionWithAnswer extends Question {
-  participant_answer?: string;
-  answer_display?: string;
-  is_answered: boolean;
+  answerDisplay: string;
+  textAnswer: string;
+  selectedOptionKeys: string[];
+  isAnswered: boolean;
 }
 
 /**
@@ -61,23 +62,127 @@ const ParticipantAnswerDetail: React.FC<ParticipantAnswerDetailProps> = ({
       }
 
       // 将答案与题目匹配
-      const questionsWithAnswers: QuestionWithAnswer[] = questionsData.map(question => {
-        const studentAnswer = examResult.answers[question.id] || '';
-        let answerDisplay = studentAnswer;
-        
-        // 如果是选择题，显示选项内容
-        if (studentAnswer && question.question_type !== 'text' && question.options) {
-          const optionContent = question.options[studentAnswer];
-          if (optionContent) {
-            answerDisplay = `${studentAnswer}. ${optionContent}`;
-          }
+      const parseChoiceAnswerKeys = (rawAnswer: unknown): string[] => {
+        if (rawAnswer == null) {
+          return [];
         }
+
+        if (Array.isArray(rawAnswer)) {
+          return rawAnswer.map(value => String(value)).filter(Boolean);
+        }
+
+        if (typeof rawAnswer === 'string') {
+          const trimmed = rawAnswer.trim();
+          if (!trimmed) return [];
+
+          // 解析 JSON 数组格式
+          if ((trimmed.startsWith('[') && trimmed.endsWith(']')) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+            try {
+              const parsed = JSON.parse(trimmed);
+              if (Array.isArray(parsed)) {
+                return parsed.map((value: unknown) => String(value)).filter(Boolean);
+              }
+              if (parsed && typeof parsed === 'object') {
+                return Object.keys(parsed).filter(key => parsed[key]);
+              }
+            } catch {
+              // ignore JSON parse errors and fall through
+            }
+          }
+
+          if (trimmed.includes(',')) {
+            return trimmed
+              .split(',')
+              .map(item => item.trim())
+              .filter(Boolean);
+          }
+
+          return [trimmed];
+        }
+
+        if (typeof rawAnswer === 'object') {
+          return Object.keys(rawAnswer as Record<string, unknown>).filter(key => (rawAnswer as Record<string, unknown>)[key]);
+        }
+
+        return [String(rawAnswer)];
+      };
+
+      const getOptionLabel = (optionValue: string | Question['options'][string]): string => {
+        if (typeof optionValue === 'string') {
+          return optionValue;
+        }
+
+        if (!optionValue) {
+          return '';
+        }
+
+        if (typeof optionValue === 'object') {
+          return optionValue.text || optionValue.label || '';
+        }
+
+        return String(optionValue ?? '');
+      };
+
+      const formatAnswer = (question: Question, rawAnswer: unknown) => {
+        if (question.question_type === 'text') {
+          if (rawAnswer == null) {
+            return {
+              textAnswer: '',
+              answerDisplay: '',
+              selectedOptionKeys: [] as string[],
+              isAnswered: false,
+            };
+          }
+
+          let textValue = '';
+
+          if (typeof rawAnswer === 'string') {
+            textValue = rawAnswer;
+          } else if (typeof rawAnswer === 'number' || typeof rawAnswer === 'boolean') {
+            textValue = String(rawAnswer);
+          } else if (Array.isArray(rawAnswer)) {
+            textValue = rawAnswer.join(', ');
+          } else if (typeof rawAnswer === 'object') {
+            try {
+              textValue = JSON.stringify(rawAnswer);
+            } catch {
+              textValue = String(rawAnswer);
+            }
+          }
+
+          return {
+            textAnswer: textValue,
+            answerDisplay: textValue,
+            selectedOptionKeys: [] as string[],
+            isAnswered: Boolean(textValue && textValue.trim().length > 0),
+          };
+        }
+
+        const selectedKeys = parseChoiceAnswerKeys(rawAnswer);
+        const optionLabels = (selectedKeys || []).map(key => {
+          const optionValue = question.options?.[key];
+          const label = getOptionLabel(optionValue);
+          return label ? `${key}. ${label}` : key;
+        });
+
+        return {
+          textAnswer: '',
+          answerDisplay: optionLabels.join('；'),
+          selectedOptionKeys: selectedKeys,
+          isAnswered: selectedKeys.length > 0,
+        };
+      };
+
+      const questionsWithAnswers: QuestionWithAnswer[] = questionsData.map(question => {
+        const rawAnswer = examResult.answers?.[question.id];
+        const { textAnswer, answerDisplay, selectedOptionKeys, isAnswered } = formatAnswer(question, rawAnswer);
 
         return {
           ...question,
-          student_answer: studentAnswer,
-          answer_display: answerDisplay,
-          is_answered: Boolean(studentAnswer),
+          textAnswer,
+          answerDisplay,
+          selectedOptionKeys,
+          isAnswered,
         };
       });
 
@@ -98,7 +203,7 @@ const ParticipantAnswerDetail: React.FC<ParticipantAnswerDetailProps> = ({
   // 计算答题统计
   const getAnswerStats = () => {
     const totalQuestions = questions.length;
-    const answeredQuestions = questions.filter(q => q.is_answered).length;
+    const answeredQuestions = questions.filter(q => q.isAnswered).length;
     const completionRate = totalQuestions > 0 ? (answeredQuestions / totalQuestions) * 100 : 0;
 
     return {
@@ -112,16 +217,30 @@ const ParticipantAnswerDetail: React.FC<ParticipantAnswerDetailProps> = ({
   const stats = getAnswerStats();
 
   // 计算答题用时
-  const getDuration = () => {
-    if (!examResult.started_at) return null;
-    const startTime = new Date(examResult.started_at);
-    const endTime = new Date(examResult.submitted_at);
-    const durationMs = endTime.getTime() - startTime.getTime();
-    const durationMinutes = Math.round(durationMs / 60000);
-    return durationMinutes;
+  const getDurationMetrics = () => {
+    const startedAt = examResult.started_at ? new Date(examResult.started_at) : null;
+    const submittedAt = examResult.submitted_at ? new Date(examResult.submitted_at) : null;
+
+    if (!startedAt || !submittedAt || Number.isNaN(startedAt.getTime()) || Number.isNaN(submittedAt.getTime())) {
+      return {
+        totalSeconds: null,
+        minutes: null,
+        perQuestionMinutes: null,
+      };
+    }
+
+    const totalSeconds = Math.max(0, Math.floor((submittedAt.getTime() - startedAt.getTime()) / 1000));
+    const minutes = Math.max(1, Math.round(totalSeconds / 60));
+    const perQuestionMinutes = questions.length > 0 ? Math.round((minutes / questions.length) * 10) / 10 : null;
+
+    return {
+      totalSeconds,
+      minutes,
+      perQuestionMinutes,
+    };
   };
 
-  const duration = getDuration();
+  const durationMetrics = getDurationMetrics();
 
   if (loading) {
     return (
@@ -199,18 +318,19 @@ const ParticipantAnswerDetail: React.FC<ParticipantAnswerDetailProps> = ({
             <div style={{ marginTop: 4 }}>
               <Space>
                 <ClockCircleOutlined style={{ color: '#52c41a' }} />
-                <Text strong>{duration ? `${duration} 分钟` : '未知'}</Text>
+                <Text strong>
+                  {durationMetrics.minutes != null ? `${durationMetrics.minutes} 分钟` : '暂无数据'}
+                </Text>
               </Space>
             </div>
           </div>
           <div>
-            <Text type="secondary">答题效率</Text>
+            <Text type="secondary">平均用时</Text>
             <div style={{ marginTop: 4 }}>
-              <Text strong style={{ color: duration && duration < 30 ? '#52c41a' : duration && duration < 60 ? '#faad14' : '#ff4d4f' }}>
-                {duration && stats.totalQuestions > 0 
-                  ? `${Math.round(duration / stats.totalQuestions * 10) / 10} 分钟/题` 
-                  : '未知'
-                }
+              <Text strong style={{ color: durationMetrics.perQuestionMinutes != null ? '#1890ff' : '#d9d9d9' }}>
+                {durationMetrics.perQuestionMinutes != null 
+                  ? `${durationMetrics.perQuestionMinutes} 分钟/题`
+                  : '暂无数据'}
               </Text>
             </div>
           </div>
@@ -265,7 +385,7 @@ const ParticipantAnswerDetail: React.FC<ParticipantAnswerDetailProps> = ({
         ) : (
           <Timeline
             items={questions.map((question) => ({
-              dot: question.is_answered ? (
+              dot: question.isAnswered ? (
                 <CheckCircleOutlined style={{ color: '#52c41a' }} />
               ) : (
                 <QuestionCircleOutlined style={{ color: '#faad14' }} />
@@ -276,10 +396,10 @@ const ParticipantAnswerDetail: React.FC<ParticipantAnswerDetailProps> = ({
                   size="small" 
                   style={{ 
                     marginBottom: 8,
-                    border: question.is_answered 
+                    border: question.isAnswered 
                       ? '1px solid #b7eb8f' 
                       : '1px solid #ffe7ba',
-                    background: question.is_answered 
+                    background: question.isAnswered 
                       ? '#f6ffed' 
                       : '#fffbe6',
                   }}
@@ -291,7 +411,7 @@ const ParticipantAnswerDetail: React.FC<ParticipantAnswerDetailProps> = ({
                         {question.question_type === 'single_choice' ? '单选题' : 
                          question.question_type === 'multiple_choice' ? '多选题' : '文本题'}
                       </Tag>
-                      {!question.is_answered && <Tag color="warning">未作答</Tag>}
+                      {!question.isAnswered && <Tag color="warning">未作答</Tag>}
                     </Space>
                   </div>
                   
@@ -309,18 +429,18 @@ const ParticipantAnswerDetail: React.FC<ParticipantAnswerDetailProps> = ({
                             margin: '4px 0',
                             padding: '4px 8px',
                             borderRadius: 4,
-                            background: question.student_answer === key ? '#e6f7ff' : 'transparent',
-                            border: question.student_answer === key ? '1px solid #91d5ff' : '1px solid transparent',
+                            background: question.selectedOptionKeys.includes(key) ? '#e6f7ff' : 'transparent',
+                            border: question.selectedOptionKeys.includes(key) ? '1px solid #91d5ff' : '1px solid transparent',
                           }}
                         >
                           <Space>
-                            <Text strong style={{ color: question.student_answer === key ? '#1890ff' : '#666' }}>
+                            <Text strong style={{ color: question.selectedOptionKeys.includes(key) ? '#1890ff' : '#666' }}>
                               {key}.
                             </Text>
-                            <Text style={{ color: question.student_answer === key ? '#1890ff' : '#333' }}>
-                              {typeof value === 'string' ? value : value.text || value.label || ''}
+                            <Text style={{ color: question.selectedOptionKeys.includes(key) ? '#1890ff' : '#333' }}>
+                              {typeof value === 'string' ? value : value?.text || value?.label || ''}
                             </Text>
-                            {question.student_answer === key && (
+                            {question.selectedOptionKeys.includes(key) && (
                               <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 14 }} />
                             )}
                           </Space>
@@ -334,11 +454,11 @@ const ParticipantAnswerDetail: React.FC<ParticipantAnswerDetailProps> = ({
                     <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
                       学生回答:
                     </Text>
-                    {question.is_answered ? (
+                    {question.isAnswered ? (
                       <Text style={{ fontSize: 14 }}>
                         {question.question_type === 'text' 
-                          ? question.student_answer 
-                          : question.answer_display
+                          ? question.textAnswer 
+                          : question.answerDisplay
                         }
                       </Text>
                     ) : (

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
-import { Card, Row, Col, FloatButton, BackTop, Progress, Typography, Avatar } from 'antd';
+import { Card, Row, Col, FloatButton, BackTop, Progress, Typography, Avatar, Spin } from 'antd';
 import {
   MenuOutlined,
   BulbOutlined,
   ClockCircleOutlined,
   EyeOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import { MediaStreamProvider } from '../contexts/MediaStreamContext';
 import type { Question } from '../types';
@@ -67,6 +68,10 @@ const ParticipantExamContent: React.FC = () => {
     };
   }, []);
 
+  // 推流初始化状态
+  const [streamInitializing, setStreamInitializing] = useState(false);
+  const [streamReady, setStreamReady] = useState(false);
+
   // 考试流程 Hook
   const {
     answers,
@@ -110,8 +115,21 @@ const ParticipantExamContent: React.FC = () => {
   // 开始考试：初始化 AI 并启动流程
   const handleExamStart = useCallback(async () => {
     if (!exam || !participantInfo) return;
-    await initAISession(examUuid!, participantInfo);
-    startExam(exam.duration_minutes);
+    
+    try {
+      setStreamInitializing(true);
+      // 初始化AI会话和WebRTC推流
+      await initAISession(examUuid!, participantInfo);
+      setStreamReady(true);
+      // 推流就绪后启动考试计时器
+      startExam(exam.duration_minutes);
+    } catch (error) {
+      console.warn('AI session initialization failed, continuing in degraded mode:', error);
+      // 即使推流失败，也允许用户答题（降级模式）
+      startExam(exam.duration_minutes);
+    } finally {
+      setStreamInitializing(false);
+    }
   }, [exam, participantInfo, examUuid, initAISession, startExam]);
 
   // 设备检测完成
@@ -133,8 +151,10 @@ const ParticipantExamContent: React.FC = () => {
       console.warn('Error during submission cleanup:', error);
     } finally {
       setCurrentStep('completed');
+      setParticipantInfo(null);
+      setDeviceTestResults(null);
     }
-  }, [answers, timelineRecorder, disconnect, stopTimer]);
+  }, [answers, timelineRecorder, disconnect, stopTimer, setParticipantInfo]);
 
   // 页面关闭/刷新提醒（仅在考试进行中）
   useEffect(() => {
@@ -235,6 +255,52 @@ const ParticipantExamContent: React.FC = () => {
         />
       )}
 
+      {/* 推流初始化Loading遮罩 */}
+      {streamInitializing && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(255, 255, 255, 0.95)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <Spin 
+            size="large" 
+            indicator={<LoadingOutlined style={{ fontSize: 48, color: '#4F46E5' }} spin />}
+          />
+          <div style={{ 
+            marginTop: 24, 
+            textAlign: 'center',
+            maxWidth: 400,
+            padding: '0 20px'
+          }}>
+            <Typography.Title level={4} style={{ color: '#4F46E5', marginBottom: 8 }}>
+              正在连接考试系统
+            </Typography.Title>
+            <Typography.Text type="secondary" style={{ fontSize: 16 }}>
+              正在建立视频分析连接，请稍候...
+            </Typography.Text>
+            <div style={{ 
+              marginTop: 16, 
+              padding: 12, 
+              background: 'rgba(79, 70, 229, 0.1)', 
+              borderRadius: 8,
+              fontSize: 14,
+              color: '#6B7280'
+            }}>
+              💡 系统正在为您启动AI心理分析功能，这将帮助更好地了解您的答题状态
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 顶部状态栏 */}
       <div style={statusBarStyle}>
         <div
@@ -327,6 +393,8 @@ const ParticipantExamContent: React.FC = () => {
                   transition: 'opacity 0.3s ease',
                   opacity: questionTransition ? 0.5 : 1,
                   animation: questionTransition ? 'none' : 'questionSlide 0.3s ease-out',
+                  pointerEvents: streamInitializing ? 'none' : 'auto', // 推流初始化时禁用交互
+                  filter: streamInitializing ? 'grayscale(0.3)' : 'none', // 推流初始化时显示视觉提示
                 }}
               >
                 <div ref={questionTopRef} />
@@ -339,6 +407,7 @@ const ParticipantExamContent: React.FC = () => {
                     onAnswerChange={onAnswerChangeWrapped}
                     showAudioPlayer={true}
                     timelineRecorder={timelineRecorder}
+                    disabled={streamInitializing} // 传递禁用状态
                   />
                 ) : (
                   <Card>
@@ -352,27 +421,32 @@ const ParticipantExamContent: React.FC = () => {
 
             {/* 导航区域 */}
             <Col xs={24} lg={8}>
-              <AIStatusPanel
-                aiAvailable={aiAvailable}
-                aiConfigLoading={aiConfigLoading}
-                webrtcConnectionState={webrtcConnectionState}
-                emotionAnalysis={emotionAnalysis}
-                heartRate={heartRate}
-              />
+              <div style={{
+                pointerEvents: streamInitializing ? 'none' : 'auto', // 推流初始化时禁用交互
+                filter: streamInitializing ? 'grayscale(0.3)' : 'none', // 推流初始化时显示视觉提示
+              }}>
+                <AIStatusPanel
+                  aiAvailable={aiAvailable}
+                  aiConfigLoading={aiConfigLoading}
+                  webrtcConnectionState={webrtcConnectionState}
+                  emotionAnalysis={emotionAnalysis}
+                  heartRate={heartRate}
+                />
 
-              <QuestionNavigation
-                questions={visibleQuestions}
-                currentQuestionIndex={currentQuestionIndex}
-                setCurrentQuestionIndex={setCurrentQuestionIndex}
-                answers={answers}
-                timeRemaining={timeRemaining}
-                examDurationMinutes={exam?.duration_minutes || 0}
-                showQuestionNav={showQuestionNav}
-                setShowQuestionNav={setShowQuestionNav}
-                onQuestionChange={handleQuestionChange}
-                onSubmitExam={() => submissionManagerRef.current?.showSubmissionConfirm?.(false)}
-                justSaved={justSaved}
-              />
+                <QuestionNavigation
+                  questions={visibleQuestions}
+                  currentQuestionIndex={currentQuestionIndex}
+                  setCurrentQuestionIndex={setCurrentQuestionIndex}
+                  answers={answers}
+                  timeRemaining={timeRemaining}
+                  examDurationMinutes={exam?.duration_minutes || 0}
+                  showQuestionNav={showQuestionNav}
+                  setShowQuestionNav={setShowQuestionNav}
+                  onQuestionChange={handleQuestionChange}
+                  onSubmitExam={() => submissionManagerRef.current?.showSubmissionConfirm?.(false)}
+                  justSaved={justSaved}
+                />
+              </div>
             </Col>
           </Row>
         </div>

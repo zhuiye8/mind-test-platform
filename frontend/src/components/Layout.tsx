@@ -13,8 +13,9 @@ import {
   MenuUnfoldOutlined,
   BugOutlined,
   ExperimentOutlined as TestOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
-import { removeAuthToken, getTeacherInfo } from '../utils/auth';
+import { removeAuthToken, getTeacherInfo, isAdmin } from '../utils/auth';
 import '../styles/layout.css';
 import brain from '../assets/brain.svg';
 
@@ -26,6 +27,13 @@ const Layout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const teacherInfo = getTeacherInfo();
+  const [userRole, setUserRole] = useState<string | null>(null);
+  
+  // 监听用户信息变化
+  React.useEffect(() => {
+    const currentTeacher = getTeacherInfo();
+    setUserRole(currentTeacher?.role || null);
+  }, [location.pathname]); // 路径变化时重新检查用户信息
 
   // 根据当前路径生成面包屑（仅展示，不改变任何路由逻辑）
   const getBreadcrumbItems = (pathname: string) => {
@@ -38,7 +46,8 @@ const Layout: React.FC = () => {
       dashboard: '仪表板',
       papers: '试卷管理',
       exams: '考试管理',
-      analytics: '数据分析',
+      'teacher-management': '教师管理',
+      // analytics: '数据分析',
       monitor: '流媒体监测',
       'monitor-v2': '流媒体监测V2',
       'stream-test': '连接测试',
@@ -85,11 +94,17 @@ const Layout: React.FC = () => {
       icon: <ExperimentOutlined />,
       label: '考试管理',
     },
-    {
-      key: '/analytics',
-      icon: <BarChartOutlined />,
-      label: '数据分析',
-    },
+    // 只有管理员才能看到教师管理菜单
+    ...(userRole === 'ADMIN' ? [{
+      key: '/teacher-management',
+      icon: <TeamOutlined />,
+      label: '教师管理',
+    }] : []),
+    // {
+    //   key: '/analytics',
+    //   icon: <BarChartOutlined />,
+    //   label: '数据分析',
+    // },
     // {
     //   key: '/monitor',
     //   icon: <MonitorOutlined />,

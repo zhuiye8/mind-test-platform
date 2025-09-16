@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Spin, Empty, message, Modal, Space, notification, Typography, Tag, Tooltip } from 'antd';
 import { ArrowLeftOutlined, LoadingOutlined } from '@ant-design/icons';
 import { examApi, teacherAiApi } from '../services/api';
+import { ExamStatus } from '../constants/examStatus';
 import type { Exam, ExamResult } from '../types';
 import type { ExamStatusType } from '../constants/examStatus';
 import ParticipantAnswerDetail from '../components/ParticipantAnswerDetail';
@@ -118,8 +119,17 @@ const ExamDetail: React.FC = () => {
       setToggleLoading(true);
       const response = await examApi.togglePublish(examId);
       if (response.success) {
-        message.success('状态更新成功');
+        const nextStatus = response.data?.status as ExamStatusType | undefined;
+        if (nextStatus === ExamStatus.PUBLISHED) {
+          message.success('考试已发布');
+        } else if (nextStatus === ExamStatus.DRAFT) {
+          message.success('考试已停止并回到草稿状态');
+        } else {
+          message.success('状态更新成功');
+        }
         await loadExamDetail();
+      } else {
+        message.error(response.error || '状态更新失败');
       }
     } catch (error) {
       console.error('状态更新失败:', error);
@@ -205,6 +215,73 @@ const ExamDetail: React.FC = () => {
     }
   };
 
+  // 删除考试
+  const handleDeleteExam = async () => {
+    if (!examId || !exam) return;
+    
+    modal.confirm({
+      title: '确认删除考试',
+      content: `确定要删除考试 "${exam.title}" 吗？此操作不可恢复！`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const response = await examApi.delete(examId);
+          if (response.success) {
+            message.success('考试删除成功');
+            navigate('/exams');
+          } else {
+            message.error(response.error || '删除失败');
+          }
+        } catch (error: any) {
+          console.error('删除考试失败:', error);
+          message.error(error.response?.data?.error || '删除失败');
+        }
+      }
+    });
+  };
+
+  // 归档考试
+  const handleArchiveExam = async () => {
+    if (!examId || !exam) return;
+    
+    try {
+      const response = await examApi.updateStatus(examId, ExamStatus.ARCHIVED, {
+        fromStatus: exam.status
+      });
+      if (response.success) {
+        message.success('考试已归档');
+        await loadExamDetail();
+      } else {
+        message.error(response.error || '归档失败');
+      }
+    } catch (error: any) {
+      console.error('归档考试失败:', error);
+      message.error(error.response?.data?.error || '归档失败');
+    }
+  };
+
+  // 恢复考试
+  const handleRestoreExam = async () => {
+    if (!examId || !exam) return;
+    
+    try {
+      const response = await examApi.updateStatus(examId, ExamStatus.SUCCESS, {
+        fromStatus: exam.status
+      });
+      if (response.success) {
+        message.success('考试已恢复');
+        await loadExamDetail();
+      } else {
+        message.error(response.error || '恢复失败');
+      }
+    } catch (error: any) {
+      console.error('恢复考试失败:', error);
+      message.error(error.response?.data?.error || '恢复失败');
+    }
+  };
+
   // 生成AI分析报告 - 优化版本
   const handleGenerateAIReport = async (examResult: ExamResult) => {
     if (!examResult.id || aiGeneratingMap[examResult.id]) return;
@@ -257,6 +334,16 @@ const ExamDetail: React.FC = () => {
       }
 
       if (response.success && response.data) {
+        if (response.data.transferring) {
+          message.info(response.data.message || 'AI 数据仍在传输，请稍后再试');
+          return;
+        }
+
+        if (!response.data.report) {
+          message.warning('AI报告暂未生成，请稍后重试');
+          return;
+        }
+
         message.success('AI分析报告生成成功！', 3);
         
         // 设置当前报告数据并显示专业查看器
@@ -557,6 +644,9 @@ const ExamDetail: React.FC = () => {
         onCopyPublicUrl={copyPublicUrl}
         onTogglePublish={handleTogglePublish}
         onFinishExam={handleFinishExam}
+        onDelete={handleDeleteExam}
+        onArchive={handleArchiveExam}
+        onRestore={handleRestoreExam}
       />
 
       {/* 考试结果 */}

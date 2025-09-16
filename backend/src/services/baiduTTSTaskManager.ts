@@ -265,18 +265,26 @@ export class BaiduTTSTaskManager {
       };
 
       tasksInfo.forEach(task => {
-        switch (task.task_status) {
-          case 'Running':
+        const status = (task.task_status || '').toString().toLowerCase();
+        switch (status) {
+          case 'running':
+          case 'processing':
             summary.running++;
             summary.runningTasks.push(task);
             break;
-          case 'Success':
+          case 'success':
             summary.success++;
             summary.successTasks.push(task);
             break;
-          case 'Failure':
+          case 'failure':
+          case 'failed':
             summary.failure++;
             summary.failureTasks.push(task);
+            break;
+          default:
+            console.warn(`⚠️ 未识别的百度TTS任务状态: ${task.task_status}`);
+            summary.running++;
+            summary.runningTasks.push(task);
             break;
         }
       });
@@ -366,10 +374,32 @@ export class BaiduTTSTaskManager {
     const downloadMap = new Map<string, string>();
     
     successTasks.forEach(task => {
-      if (task.task_result?.speech_url) {
-        downloadMap.set(task.task_id, task.task_result.speech_url);
+      const urls: string[] = [];
+
+      const result = task.task_result as any;
+      if (result) {
+        if (typeof result.speech_url === 'string') {
+          urls.push(result.speech_url);
+        }
+        if (Array.isArray(result.speech_urls)) {
+          result.speech_urls.filter((url: unknown) => typeof url === 'string').forEach((url: string) => urls.push(url));
+        }
+        if (Array.isArray(result.speech_list)) {
+          result.speech_list.filter((segment: any) => typeof segment?.speech_url === 'string').forEach((segment: any) => urls.push(segment.speech_url));
+        }
+        if (Array.isArray(result.speech_segment)) {
+          result.speech_segment.filter((segment: any) => typeof segment?.speech_url === 'string').forEach((segment: any) => urls.push(segment.speech_url));
+        }
+      }
+
+      const firstUrl = urls.find(url => !!url);
+
+      if (firstUrl) {
+        downloadMap.set(task.task_id, firstUrl);
       } else {
-        console.warn(`⚠️ 成功任务${task.task_id}缺少speech_url`);
+        const raw = JSON.stringify(task.task_result || {});
+        const preview = raw.length > 200 ? `${raw.slice(0, 200)}...` : raw;
+        console.warn(`⚠️ 成功任务${task.task_id}缺少speech_url，原始task_result: ${preview}`);
       }
     });
 

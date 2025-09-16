@@ -310,6 +310,165 @@ export const restoreExam = async (exam: Exam, onRefresh: () => void): Promise<vo
 };
 
 /**
+ * 暂停考试（PUBLISHED → EXPIRED）
+ */
+export const expireExam = async (exam: Exam, onRefresh: () => void): Promise<void> => {
+  
+  if (exam.status !== ExamStatus.PUBLISHED) {
+    message.warning('只能暂停进行中的考试');
+    return;
+  }
+
+  return new Promise((resolve) => {
+    confirm({
+      title: '确认暂停考试',
+      icon: <ExclamationCircleOutlined />,
+      content: (
+        <div>
+          <p>您即将暂停考试：<strong>"{exam.title}"</strong></p>
+          <p style={{ color: '#fa8c16', margin: '8px 0' }}>
+            ⏸️ 停止后学生将无法继续参加考试，系统会把考试移回草稿状态
+          </p>
+          {exam.participant_count > 0 && (
+            <p style={{ color: '#52c41a' }}>
+              当前已有 {exam.participant_count} 人参与此考试
+            </p>
+          )}
+          <p style={{ color: '#8c8c8c' }}>
+            停止后可在“草稿”泳道中重新编辑并再次发布考试
+          </p>
+        </div>
+      ),
+      okText: '确认暂停',
+      cancelText: '取消',
+      okType: 'danger',
+      async onOk() {
+        try {
+          const response = await examApi.togglePublish(exam.id);
+          if (response.success) {
+            message.success('考试已停止并回到草稿状态');
+            onRefresh();
+            resolve();
+          } else {
+            message.error(response.error || '暂停考试失败');
+          }
+        } catch (error: any) {
+          console.error('暂停考试失败:', error);
+          message.error(error?.response?.data?.message || '暂停考试失败');
+        }
+      },
+      onCancel() {
+        resolve();
+      }
+    });
+  });
+};
+
+/**
+ * 重新编辑考试（EXPIRED → DRAFT）
+ */
+export const reEditExam = async (exam: Exam, onRefresh: () => void): Promise<void> => {
+  
+  if (exam.status !== ExamStatus.EXPIRED) {
+    message.warning('只能重新编辑已停止的考试');
+    return;
+  }
+
+  return new Promise((resolve) => {
+    confirm({
+      title: '确认重新编辑考试',
+      icon: <ExclamationCircleOutlined />,
+      content: (
+        <div>
+          <p>您即将重新编辑考试：<strong>"{exam.title}"</strong></p>
+          <p style={{ color: '#1890ff', margin: '8px 0' }}>
+            ✏️ 重新编辑后考试将回到草稿状态，可修改后重新发布
+          </p>
+          {exam.participant_count > 0 && (
+            <p style={{ color: '#fa8c16' }}>
+              注意：已有 {exam.participant_count} 人参与了此考试
+            </p>
+          )}
+          <p style={{ color: '#8c8c8c' }}>
+            编辑后可在"草稿"中修改考试设置
+          </p>
+        </div>
+      ),
+      okText: '确认编辑',
+      cancelText: '取消',
+      async onOk() {
+        try {
+          await examApi.updateStatus(exam.id, ExamStatus.DRAFT, {
+            fromStatus: exam.status
+          });
+          message.success('考试已转为草稿状态');
+          onRefresh();
+          resolve();
+        } catch (error: any) {
+          console.error('重新编辑考试失败:', error);
+          message.error(error?.response?.data?.message || '重新编辑考试失败');
+        }
+      },
+      onCancel() {
+        resolve();
+      }
+    });
+  });
+};
+
+/**
+ * 终止考试（EXPIRED → SUCCESS）
+ */
+export const terminateExam = async (exam: Exam, onRefresh: () => void): Promise<void> => {
+  
+  if (exam.status !== ExamStatus.EXPIRED) {
+    message.warning('只能终止已停止的考试');
+    return;
+  }
+
+  return new Promise((resolve) => {
+    confirm({
+      title: '确认终止考试',
+      icon: <ExclamationCircleOutlined />,
+      content: (
+        <div>
+          <p>您即将终止考试：<strong>"{exam.title}"</strong></p>
+          <p style={{ color: '#52c41a', margin: '8px 0' }}>
+            ✅ 终止后考试将结束，无法再次编辑
+          </p>
+          {exam.participant_count > 0 && (
+            <p style={{ color: '#1890ff' }}>
+              共有 {exam.participant_count} 人参与了此考试
+            </p>
+          )}
+          <p style={{ color: '#8c8c8c' }}>
+            终止后可在"已结束"中查看考试结果
+          </p>
+        </div>
+      ),
+      okText: '确认终止',
+      cancelText: '取消',
+      async onOk() {
+        try {
+          await examApi.updateStatus(exam.id, ExamStatus.SUCCESS, {
+            fromStatus: exam.status
+          });
+          message.success('考试已终止');
+          onRefresh();
+          resolve();
+        } catch (error: any) {
+          console.error('终止考试失败:', error);
+          message.error(error?.response?.data?.message || '终止考试失败');
+        }
+      },
+      onCancel() {
+        resolve();
+      }
+    });
+  });
+};
+
+/**
  * 统一的状态变更方法
  */
 export const changeExamStatus = async (
@@ -321,13 +480,24 @@ export const changeExamStatus = async (
     case ExamStatus.PUBLISHED:
       return publishExam(exam, onRefresh);
     case ExamStatus.SUCCESS:
+      if (exam.status === ExamStatus.EXPIRED) {
+        return terminateExam(exam, onRefresh);
+      }
       return stopExam(exam, onRefresh);
+    case ExamStatus.EXPIRED:
+      return expireExam(exam, onRefresh);
     case ExamStatus.ARCHIVED:
       return archiveExam(exam, onRefresh);
+    case ExamStatus.DRAFT:
+      if (exam.status === ExamStatus.EXPIRED) {
+        return reEditExam(exam, onRefresh);
+      }
+      break;
     default:
       if (exam.status === ExamStatus.ARCHIVED && newStatus === ExamStatus.SUCCESS) {
         return restoreExam(exam, onRefresh);
       }
-      message.warning('不支持的状态变更操作');
-}
+      break;
+  }
+  message.warning('不支持的状态变更操作');
 };

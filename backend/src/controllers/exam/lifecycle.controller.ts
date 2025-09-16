@@ -5,9 +5,50 @@
 
 import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../../utils/response';
-import { ExamStatus } from '../../types';
+import { ExamStatus, ExamStatusTransitionRequest } from '../../types';
 import prisma from '../../utils/database';
 import { ExamStatusValidator } from '../../utils/examStatusValidator';
+
+const examDetailInclude = {
+  paper: {
+    select: {
+      title: true,
+    },
+  },
+  _count: {
+    select: {
+      results: true,
+    },
+  },
+};
+
+const buildExamResponse = (exam: any) => {
+  const snapshot = exam.questionIdsSnapshot;
+  const questionIds = Array.isArray(snapshot) ? (snapshot as string[]) : [];
+
+  return {
+    id: exam.id,
+    public_uuid: exam.publicUuid,
+    title: exam.title,
+    paper_title: exam.paper?.title,
+    duration_minutes: exam.durationMinutes,
+    question_count: questionIds.length,
+    participant_count: exam._count?.results ?? 0,
+    start_time: exam.startTime,
+    end_time: exam.endTime,
+    has_password: !!exam.password,
+    shuffle_questions: exam.shuffleQuestions,
+    allow_multiple_submissions: exam.allowMultipleSubmissions,
+    status: exam.status,
+    public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${exam.publicUuid}`,
+    created_at: exam.createdAt,
+    updated_at: exam.updatedAt,
+    available_actions: ExamStatusValidator.getAvailableActions(
+      exam.status as ExamStatus,
+      exam._count?.results ?? 0
+    ),
+  };
+};
 
 // 切换考试发布状态
 export const toggleExamPublish = async (req: Request, res: Response): Promise<void> => {
@@ -369,5 +410,98 @@ export const restoreExam = async (req: Request, res: Response): Promise<void> =>
   } catch (error) {
     console.error('恢复考试错误:', error);
     sendError(res, '恢复考试失败', 500);
+  }
+};
+
+/**
+ * 通用状态更新接口 - 支持EXPIRED/DRAFT等状态转换
+ */
+export const updateExamStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { examId } = req.params;
+    const teacherId = req.teacher?.id;
+    const { to_status, from_status, reason }: Partial<ExamStatusTransitionRequest> = req.body || {};
+
+    if (!teacherId) {
+      sendError(res, '认证信息无效', 401);
+      return;
+    }
+
+    if (!to_status || !Object.values(ExamStatus).includes(to_status as ExamStatus)) {
+      sendError(res, '无效的目标状态', 400);
+      return;
+    }
+
+    const targetStatus = to_status as ExamStatus;
+
+    const existingExam = await prisma.exam.findFirst({
+      where: {
+        id: examId,
+        teacherId,
+      },
+      include: examDetailInclude,
+    });
+
+    if (!existingExam) {
+      sendError(res, '考试不存在或无权限操作', 404);
+      return;
+    }
+
+    const currentStatus = existingExam.status as ExamStatus;
+
+    if (currentStatus === targetStatus) {
+      sendError(res, '考试已处于该状态', 400);
+      return;
+    }
+
+    if (from_status && from_status !== currentStatus) {
+      sendError(res, '考试状态已更新，请刷新后重试', 409);
+      return;
+    }
+
+    try {
+      ExamStatusValidator.validateTransition(currentStatus, targetStatus);
+    } catch (error: any) {
+      sendError(res, error.message, 400);
+      return;
+    }
+
+    const updatedExam = await prisma.exam.update({
+      where: { id: examId },
+      data: {
+        status: targetStatus,
+        updatedAt: new Date(),
+      },
+      include: examDetailInclude,
+    });
+
+    const responseData: any = {
+      ...buildExamResponse(updatedExam),
+      lifecycle: {
+        from: currentStatus,
+        to: targetStatus,
+        reason: reason || null,
+        timestamp: updatedExam.updatedAt,
+      },
+    };
+
+    if (targetStatus === ExamStatus.ARCHIVED) {
+      responseData.archived_at = updatedExam.updatedAt;
+    }
+
+    if (targetStatus === ExamStatus.SUCCESS && currentStatus === ExamStatus.ARCHIVED) {
+      responseData.restored_at = updatedExam.updatedAt;
+    }
+
+    if (targetStatus === ExamStatus.EXPIRED) {
+      responseData.expired_at = updatedExam.updatedAt;
+    }
+
+    sendSuccess(res, responseData);
+
+    console.log(`✅ 考试状态更新: ${existingExam.title} (${examId}) ${currentStatus} → ${targetStatus}`);
+  } catch (error) {
+    console.error('更新考试状态错误:', error);
+    sendError(res, '更新考试状态失败', 500);
   }
 };

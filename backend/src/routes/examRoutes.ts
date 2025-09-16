@@ -14,6 +14,7 @@ import {
   finishExam,
   archiveExam,
   restoreExam,
+  updateExamStatus,
   getArchivedExams,
   getExamSubmissions,
   getExamQuestions,
@@ -33,6 +34,7 @@ router.get('/:examId', getExamById);                        // 获取考试详�
 router.put('/:examId', updateExam);                         // 更新考试
 router.delete('/:examId', deleteExam);                      // 智能删除考试 - 增强
 router.post('/:examId/toggle-publish', toggleExamPublish);  // 切换发布状态
+router.put('/:examId/status', updateExamStatus);            // 通用状态更新（EXPIRED/DRAFT等）
 
 // 考试生命周期管理路由 - 新增
 router.put('/:examId/finish', finishExam);                  // 结束考试 (published → success)

@@ -33,3 +33,8 @@ export const getTeacherInfo = () => {
 export const isAuthenticated = (): boolean => {
   return !!getAuthToken();
 };
+
+export const isAdmin = (): boolean => {
+  const teacherInfo = getTeacherInfo();
+  return teacherInfo && teacherInfo.role === 'ADMIN';
+};

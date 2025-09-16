@@ -95,6 +95,7 @@ export const enhancedPublicApi = {
     participant_name: string;
     answers: Record<string, any>;
     started_at?: string;
+    submitted_at?: string;
     timeline_data?: any;
     voice_interactions?: any;
     device_test_results?: any;
@@ -159,10 +160,23 @@ export const enhancedPublicApi = {
         maxRetries: 2,
         baseDelay: 1000,
         maxDelay: 5000,
+        retryableErrors: (error) => {
+          // 409冲突错误（已提交）不应该重试，这是明确的业务逻辑错误
+          if (error.response?.status === 409) {
+            return false;
+          }
+          // 其他错误使用默认重试策略
+          return FailureRecoveryService.defaultRetryableErrors(error);
+        }
       }
     );
 
     if (!result.success) {
+      // 409错误不进入降级模式，直接抛出错误
+      if (result.error?.response?.status === 409) {
+        throw result.error;
+      }
+      
       if (result.degraded) {
         // 降级模式：假设可以提交（乐观策略）
         console.warn('Duplicate check failed, allowing submission (degraded mode)');

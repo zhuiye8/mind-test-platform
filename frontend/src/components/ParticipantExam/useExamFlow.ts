@@ -108,28 +108,43 @@ export const useExamFlow = (
     }, 150);
   }, [currentQuestionIndex, visibleQuestions, timelineRecorder]);
 
-  // 恢复答案（使用参与者隔离的键值）
+  // 参与者或考试切换时重置状态并恢复对应缓存
   useEffect(() => {
+    // 清理进行中的计时器，确保不会泄漏到下一次考试
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // 重置考试相关状态
+    setAnswers({});
+    setCurrentQuestionIndex(0);
+    setShowQuestionNav(false);
+    setQuestionTransition(false);
+    setExamStartTime(null);
+    setTimeRemaining(0);
+    timelineRecorder.reset();
+
     const storageKey = getStorageKey();
-    if (storageKey) {
-      // 清理旧的污染缓存
-      clearContaminatedCache();
-      
-      // 加载当前参与者的答案
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          const parsedAnswers = JSON.parse(saved);
-          console.log(`恢复参与者 ${participantInfo?.participantId} 的答案:`, Object.keys(parsedAnswers).length, '个');
-          setAnswers(parsedAnswers);
-        } catch (error) {
-          console.warn('解析已保存答案失败:', error);
-          // 清理损坏的缓存
-          localStorage.removeItem(storageKey);
-        }
+    if (!storageKey) {
+      return;
+    }
+
+    // 清理旧格式缓存，避免污染
+    clearContaminatedCache();
+
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        const parsedAnswers = JSON.parse(saved);
+        console.log(`恢复参与者 ${participantInfo?.participantId} 的答案:`, Object.keys(parsedAnswers).length, '个');
+        setAnswers(parsedAnswers);
+      } catch (error) {
+        console.warn('解析已保存答案失败:', error);
+        localStorage.removeItem(storageKey);
       }
     }
-  }, [getStorageKey, clearContaminatedCache, participantInfo]);
+  }, [examUuid, participantInfo?.participantId, getStorageKey, clearContaminatedCache, timelineRecorder]);
 
   // 组件卸载时清理定时器
   useEffect(() => {
