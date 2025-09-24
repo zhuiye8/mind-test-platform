@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../../utils/response';
 import { ExamStatus } from '../../types';
 import prisma from '../../utils/database';
+import { getPrimaryFrontendOrigin } from '../../utils/env';
 import { SmartPagination, OffsetPagination, PaginationOptions } from '../../utils/pagination';
 import { ExamStatusValidator, getStatusColor } from '../../utils/examStatusValidator';
 
@@ -180,7 +181,7 @@ export const getTeacherExams = async (req: Request, res: Response): Promise<void
         shuffle_questions: exam.shuffleQuestions,
         allow_multiple_submissions: exam.allowMultipleSubmissions,
         status: exam.status,
-        public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${exam.publicUuid}`,
+        public_url: `${getPrimaryFrontendOrigin()}/exam/${exam.publicUuid}`,
         created_at: exam.createdAt,
         updated_at: exam.updatedAt,
         // 生命周期管理相关字段
@@ -351,7 +352,7 @@ export const getArchivedExams = async (req: Request, res: Response): Promise<voi
         shuffle_questions: exam.shuffleQuestions,
         allow_multiple_submissions: exam.allowMultipleSubmissions,
         status: exam.status,
-        public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${exam.publicUuid}`,
+        public_url: `${getPrimaryFrontendOrigin()}/exam/${exam.publicUuid}`,
         created_at: exam.createdAt,
         updated_at: exam.updatedAt,
         archived_at: exam.updatedAt,

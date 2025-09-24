@@ -5,9 +5,19 @@
 
 import axios, { type AxiosInstance } from 'axios';
 
+const useDevProxy = import.meta.env.DEV
+  && ((import.meta.env.VITE_DEV_ENABLE_PROXY as string | undefined) ?? 'true') !== 'false';
+
+const API_BASE_URL = (() => {
+  if (useDevProxy) return '/api';
+  const value = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (!value) return '/api';
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+})();
+
 // 创建共享的axios实例
 const api: AxiosInstance = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 60000, // 增加到60秒，支持AI报告生成
   headers: {
     'Content-Type': 'application/json',

@@ -49,11 +49,15 @@ class ContractDataAdapter:
         }
     
     @staticmethod
-    def ai_config_response(port: int = 5678) -> Dict[str, Any]:
+    def ai_config_response(port: Optional[int] = None) -> Dict[str, Any]:
         """AI配置响应格式"""
+        resolved_port = port or int(os.environ.get('AI_SERVICE_PORT') or os.environ.get('PORT') or 5678)
+        host = os.environ.get('AI_SERVICE_PUBLIC_HOST') or os.environ.get('AI_SERVICE_HOST') or 'localhost'
+        scheme = os.environ.get('AI_SERVICE_PUBLIC_SCHEME') or os.environ.get('AI_SERVICE_SCHEME') or 'http'
+        ws_protocol = 'wss' if scheme.lower() == 'https' else 'ws'
         return {
             "available": True,
-            "websocket_url": f"ws://localhost:{port}/socket.io/",
+            "websocket_url": f"{ws_protocol}://{host}:{resolved_port}/socket.io/",
             "features": {
                 "webrtc": True,
                 "emotion_analysis": True,

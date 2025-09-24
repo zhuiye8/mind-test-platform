@@ -324,6 +324,23 @@ def end_session():
                 if 'shared_streams' in locals() and isinstance(shared_streams, dict):
                     if shared_streams.pop(session_id, None) is not None:
                         logger.info(f"[Contract API] 已从student_streams移除会话: {session_id}")
+
+                # 停止RTSP流消费
+                if 'stream_name' in session_snapshot:
+                    stream_name = session_snapshot.get('stream_name')
+                    if stream_name:
+                        try:
+                            # 获取rtsp_manager实例并停止流
+                            import sys
+                            app_module = sys.modules.get('app_lan') or sys.modules.get('emotion.app_lan')
+                            if app_module and hasattr(app_module, 'rtsp_manager'):
+                                rtsp_manager = getattr(app_module, 'rtsp_manager')
+                                ok = rtsp_manager.stop(stream_name)
+                                logger.info(f"[Contract API] 已停止RTSP流: {stream_name}, 结果: {ok}")
+                            else:
+                                logger.warning("[Contract API] 无法获取rtsp_manager实例")
+                        except Exception as e:
+                            logger.warning(f"[Contract API] 停止RTSP流失败: {e}")
         except Exception as e:
             logger.warning(f"更新student_sessions状态失败: {e}")
 
@@ -346,7 +363,9 @@ def get_ai_config():
     """获取AI服务配置信息"""
     try:
         # 获取端口配置
-        port = current_app.config.get('AI_SERVICE_PORT', 5678)
+        port = current_app.config.get('AI_SERVICE_PORT') or int(
+            os.environ.get('AI_SERVICE_PORT') or os.environ.get('PORT') or 5678
+        )
         
         # 返回配置信息
         config = ContractDataAdapter.ai_config_response(port)

@@ -5,9 +5,21 @@
 
 import axios from 'axios';
 
+const useDevProxy = import.meta.env.DEV
+  && ((import.meta.env.VITE_DEV_ENABLE_PROXY as string | undefined) ?? 'true') !== 'false';
+
+const API_PROXY_BASE_URL = (() => {
+  if (useDevProxy) return '/api/ai-proxy';
+  const apiBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  const normalized = apiBase
+    ? (apiBase.endsWith('/') ? apiBase.slice(0, -1) : apiBase)
+    : '/api';
+  return `${normalized}/ai-proxy`;
+})();
+
 // 创建axios实例
 const apiClient = axios.create({
-  baseURL: '/api/ai-proxy',
+  baseURL: API_PROXY_BASE_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'

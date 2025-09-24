@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../../utils/response';
 import { ExamStatus, ExamStatusTransitionRequest } from '../../types';
 import prisma from '../../utils/database';
+import { getPrimaryFrontendOrigin } from '../../utils/env';
 import { ExamStatusValidator } from '../../utils/examStatusValidator';
 
 const examDetailInclude = {
@@ -40,7 +41,7 @@ const buildExamResponse = (exam: any) => {
     shuffle_questions: exam.shuffleQuestions,
     allow_multiple_submissions: exam.allowMultipleSubmissions,
     status: exam.status,
-    public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${exam.publicUuid}`,
+    public_url: `${getPrimaryFrontendOrigin()}/exam/${exam.publicUuid}`,
     created_at: exam.createdAt,
     updated_at: exam.updatedAt,
     available_actions: ExamStatusValidator.getAvailableActions(
@@ -184,7 +185,7 @@ export const finishExam = async (req: Request, res: Response): Promise<void> => 
       shuffle_questions: updatedExam.shuffleQuestions,
       allow_multiple_submissions: updatedExam.allowMultipleSubmissions,
       status: updatedExam.status,
-      public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${updatedExam.publicUuid}`,
+      public_url: `${getPrimaryFrontendOrigin()}/exam/${updatedExam.publicUuid}`,
       created_at: updatedExam.createdAt,
       updated_at: updatedExam.updatedAt,
       // 生命周期管理相关字段
@@ -289,7 +290,7 @@ export const archiveExam = async (req: Request, res: Response): Promise<void> =>
       shuffle_questions: updatedExam.shuffleQuestions,
       allow_multiple_submissions: updatedExam.allowMultipleSubmissions,
       status: updatedExam.status,
-      public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${updatedExam.publicUuid}`,
+      public_url: `${getPrimaryFrontendOrigin()}/exam/${updatedExam.publicUuid}`,
       created_at: updatedExam.createdAt,
       updated_at: updatedExam.updatedAt,
       archived_at: updatedExam.updatedAt, // 归档时间
@@ -394,7 +395,7 @@ export const restoreExam = async (req: Request, res: Response): Promise<void> =>
       shuffle_questions: updatedExam.shuffleQuestions,
       allow_multiple_submissions: updatedExam.allowMultipleSubmissions,
       status: updatedExam.status,
-      public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${updatedExam.publicUuid}`,
+      public_url: `${getPrimaryFrontendOrigin()}/exam/${updatedExam.publicUuid}`,
       created_at: updatedExam.createdAt,
       updated_at: updatedExam.updatedAt,
       restored_at: updatedExam.updatedAt, // 恢复时间

@@ -34,9 +34,21 @@ logger = logging.getLogger(__name__)
 class CallbackService:
     """回调服务类"""
     
-    def __init__(self, backend_base_url: str = "http://localhost:3001", auth_token: str = "dev-fixed-token-2024"):
-        self.backend_base_url = backend_base_url.rstrip('/')
-        self.auth_token = auth_token
+    def __init__(self, backend_base_url: str | None = None, auth_token: str | None = None):
+        base_url = (
+            backend_base_url
+            or os.environ.get('BACKEND_BASE_URL')
+            or os.environ.get('API_BASE_URL')
+            or 'http://localhost:3101'
+        )
+        token = (
+            auth_token
+            or os.environ.get('BACKEND_API_TOKEN')
+            or os.environ.get('AI_SERVICE_TOKEN')
+            or 'dev-fixed-token-2024'
+        )
+        self.backend_base_url = base_url.rstrip('/')
+        self.auth_token = token
         self.timeout = 10  # 10秒超时
         
     def _send_request(self, url: str, payload: Dict[str, Any], idempotency_key: str, max_retries: int = 3) -> bool:
@@ -266,7 +278,7 @@ class CallbackService:
 callback_service = CallbackService()
 
 
-def set_callback_config(backend_base_url: str, auth_token: str):
+def set_callback_config(backend_base_url: str | None = None, auth_token: str | None = None):
     """设置回调配置"""
     global callback_service
     callback_service = CallbackService(backend_base_url, auth_token)

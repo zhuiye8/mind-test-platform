@@ -7,19 +7,60 @@ from flask import Flask, render_template, request, jsonify, Response
 from flask_socketio import SocketIO, emit, join_room, rooms
 from flask_cors import CORS
 import os
-# 加载.env文件中的环境变量
+# 加载 .env 文件中的环境变量
 from pathlib import Path
-env_path = Path(__file__).parent / '.env'
-if env_path.exists():
-    with open(env_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
+
+ENV_DIR = Path(__file__).parent
+APP_ENV = os.environ.get('APP_ENV') or os.environ.get('ENV') or 'development'
+os.environ.setdefault('APP_ENV', APP_ENV)
+_original_env_keys = set(os.environ.keys())
+_loaded_env_keys: set[str] = set()
+
+
+def _load_env_file(env_file: Path, override_loaded: bool = False) -> bool:
+    if not env_file.exists():
+        return False
+
+    try:
+        with env_file.open('r', encoding='utf-8') as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
                 key, value = line.split('=', 1)
-                os.environ.setdefault(key.strip(), value.strip())
-    print(f"[配置] 已加载环境变量文件: {env_path}")
+                key = key.strip()
+                value = value.strip()
+
+                already_defined = key in os.environ
+                defined_by_loader = key in _loaded_env_keys
+
+                if not already_defined:
+                    os.environ[key] = value
+                    _loaded_env_keys.add(key)
+                elif override_loaded and defined_by_loader and key not in _original_env_keys:
+                    os.environ[key] = value
+        print(f"[配置] 已加载环境变量文件: {env_file}")
+        return True
+    except Exception as exc:
+        print(f"[配置] 读取环境变量文件失败: {env_file} -> {exc}")
+        return False
+
+
+loaded_any = False
+load_order = [
+    (ENV_DIR / '.env', False),
+    (ENV_DIR / '.env.local', True),
+    (ENV_DIR / f'.env.{APP_ENV}', True),
+    (ENV_DIR / f'.env.{APP_ENV}.local', True),
+]
+
+for env_file, override in load_order:
+    loaded_any = _load_env_file(env_file, override) or loaded_any
+
+if not loaded_any:
+    print(f"[配置] 未找到环境变量文件，使用系统环境变量。运行模式: {APP_ENV}")
 else:
-    print(f"[配置] 环境变量文件不存在: {env_path}")
+    print(f"[配置] 当前运行模式: {APP_ENV}")
 import json
 import uuid
 import base64
@@ -69,9 +110,9 @@ CORS(app, resources={
 # 局域网配置
 class LANConfig(Config):
     """局域网部署配置"""
-    HOST = '0.0.0.0'  # 监听所有网络接口
-    PORT = 5678  # 改为5678以符合契约要求
-    DEBUG = False  # 生产环境关闭调试模式
+    HOST = os.environ.get('AI_SERVICE_HOST', os.environ.get('HOST', '0.0.0.0'))
+    PORT = int(os.environ.get('AI_SERVICE_PORT') or os.environ.get('PORT') or 5678)
+    DEBUG = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
 
 # 应用局域网配置
 app.config.from_object(LANConfig)
@@ -175,8 +216,16 @@ def unbind_stream_to_session():
 app.register_blueprint(contract_bp)
 
 # 配置回调服务
-backend_base_url = "http://localhost:3001"  # 后端地址
-auth_token = "dev-fixed-token-2024"        # 与后端.env中的AI_SERVICE_TOKEN一致
+backend_base_url = (
+    os.environ.get('BACKEND_BASE_URL')
+    or os.environ.get('API_BASE_URL')
+    or 'http://localhost:3101'
+)
+auth_token = (
+    os.environ.get('BACKEND_API_TOKEN')
+    or os.environ.get('AI_SERVICE_TOKEN')
+    or 'dev-fixed-token-2024'
+)
 set_callback_config(backend_base_url, auth_token)
 
 # 将端口配置添加到app.config中供contract_api使用
@@ -228,9 +277,15 @@ def rtsp_start():
         rtsp_url = request.args.get('rtsp_url')
         if not stream_name and not rtsp_url:
             print("[RTSP] (GET) 未提供必要参数 stream_name 或 rtsp_url，返回用法说明")
+            example_rtsp_url = f"rtsp://{get_mediamtx_hostname()}:8554/exam-xxxx"
             example = {
-                'get_example': f"{request.host_url.rstrip('/')}\/api\/rtsp\/start?stream_name=exam-xxxx&rtsp_url=rtsp://192.168.0.112:8554/exam-xxxx",
-                'post_example': f"curl -X POST http://{get_local_ip()}:{LANConfig.PORT}/api/rtsp/start -H 'Content-Type: application/json' -d '{{\"stream_name\":\"exam-xxxx\",\"rtsp_url\":\"rtsp://192.168.0.112:8554/exam-xxxx\"}}' --noproxy '*'"
+                'get_example': f"{request.host_url.rstrip('/')}/api/rtsp/start?stream_name=exam-xxxx&rtsp_url={example_rtsp_url}",
+                'post_example': (
+                    "curl -X POST "
+                    f"http://{get_local_ip()}:{LANConfig.PORT}/api/rtsp/start "
+                    "-H 'Content-Type: application/json' "
+                    f"-d '{{\"stream_name\":\"exam-xxxx\",\"rtsp_url\":\"{example_rtsp_url}\"}}' --noproxy '*'"
+                )
             }
             return jsonify({
                 'success': False,
@@ -430,11 +485,15 @@ def list_routes():
 
 @app.route('/api/docs', methods=['GET'])
 def api_docs():
-    base = f"http://{get_local_ip()}:{LANConfig.PORT}"
+    public_host = os.environ.get('AI_SERVICE_PUBLIC_HOST') or get_local_ip()
+    public_scheme = (os.environ.get('AI_SERVICE_PUBLIC_SCHEME') or 'http').lower()
+    base = f"{public_scheme}://{public_host}:{LANConfig.PORT}"
+    ws_scheme = 'wss' if public_scheme == 'https' else 'ws'
+    example_rtsp_url = f"rtsp://{get_mediamtx_hostname()}:8554/exam-xxxx"
     docs = {
         'service': 'emotion-ai (LAN)',
         'base_url': base,
-        'websocket': f"ws://{get_local_ip()}:{LANConfig.PORT}/socket.io/",
+        'websocket': f"{ws_scheme}://{public_host}:{LANConfig.PORT}/socket.io/",
         'groups': [
             {
                 'name': 'Student APIs',
@@ -448,8 +507,13 @@ def api_docs():
                 'name': 'RTSP (MediaMTX) APIs',
                 'endpoints': [
                     { 'method': 'POST|GET', 'path': '/api/rtsp/start', 'desc': '开始拉取 RTSP 流（GET 支持查询参数便捷调试）', 'example': {
-                        'curl_post': f"curl -X POST {base}/api/rtsp/start -H 'Content-Type: application/json' -d '{{\"stream_name\":\"exam-xxxx\",\"rtsp_url\":\"rtsp://192.168.0.112:8554/exam-xxxx\"}}' --noproxy '*'",
-                        'curl_get': f"curl \"{base}/api/rtsp/start?stream_name=exam-xxxx&rtsp_url=rtsp://192.168.0.112:8554/exam-xxxx\" --noproxy '*'"
+                        'curl_post': (
+                            "curl -X POST "
+                            f"{base}/api/rtsp/start "
+                            "-H 'Content-Type: application/json' "
+                            f"-d '{{\"stream_name\":\"exam-xxxx\",\"rtsp_url\":\"{example_rtsp_url}\"}}' --noproxy '*'"
+                        ),
+                        'curl_get': f"curl \"{base}/api/rtsp/start?stream_name=exam-xxxx&rtsp_url={example_rtsp_url}\" --noproxy '*'"
                     }},
                     { 'method': 'POST|GET', 'path': '/api/rtsp/stop', 'desc': '停止拉取 RTSP 流（GET 支持查询参数便捷调试）', 'example': {
                         'curl_post': f"curl -X POST {base}/api/rtsp/stop -H 'Content-Type: application/json' -d '{{\"stream_name\":\"exam-xxxx\"}}' --noproxy '*'",
@@ -505,7 +569,7 @@ def docs_page():
         <h2>cURL 示例</h2>
         <pre>curl -X POST {base}/api/rtsp/start \
   -H 'Content-Type: application/json' \
-  -d '{{"stream_name":"exam-xxxx","rtsp_url":"rtsp://192.168.0.112:8554/exam-xxxx"}}' \
+  -d '{{"stream_name":"exam-xxxx","rtsp_url":"{example_rtsp_url}"}}' \
   --noproxy '*'</pre>
         </body></html>
         """
@@ -817,6 +881,15 @@ def end_session_api():
                     'timestamp': datetime.now().isoformat()
                 })
                 
+                # 停止RTSP流消费
+                stream_name = student_info.get('stream_name')
+                if stream_name:
+                    try:
+                        ok = rtsp_manager.stop(stream_name)
+                        print(f"[AI会话] 已停止RTSP流: {stream_name}, 结果: {ok}")
+                    except Exception as e:
+                        print(f"[AI会话] 停止RTSP流失败: {e}")
+                
                 # 清理student_sessions
                 del student_sessions[session_id]
                 print(f"[AI会话] 学生 {student_info.get('student_id')} 已从监控列表中移除")
@@ -1058,6 +1131,15 @@ def disconnect_student():
         
         # 2. 从student_streams中移除视音频流数据
         removed_streams = student_streams.pop(session_id, None)
+        
+        # 2.5. 停止RTSP流消费
+        stream_name = student_info.get('stream_name')
+        if stream_name:
+            try:
+                ok = rtsp_manager.stop(stream_name)
+                print(f"[断开学生] 已停止RTSP流: {stream_name}, 结果: {ok}")
+            except Exception as e:
+                print(f"[断开学生] 停止RTSP流失败: {e}")
         
         # 3. 停止相关的API会话处理
         if simple_student_api:

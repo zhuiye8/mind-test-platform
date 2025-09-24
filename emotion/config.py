@@ -8,8 +8,8 @@ class Config:
     DEBUG = True
     
     # 服务器配置
-    HOST = '127.0.0.1'  # 改为localhost以避免Windows防火墙问题
-    PORT = 5678  # 改为5678以符合契约要求
+    HOST = os.environ.get('AI_SERVICE_HOST', os.environ.get('HOST', '127.0.0.1'))
+    PORT = int(os.environ.get('AI_SERVICE_PORT') or os.environ.get('PORT') or 5678)
     
     # 文件上传配置
     UPLOAD_FOLDER = 'static/uploads'

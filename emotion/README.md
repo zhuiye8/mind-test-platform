@@ -59,8 +59,8 @@ python app_lan.py
 ```
 
 4. **访问系统**
-- 教师端：`http://<局域网IP>:5678`
-- WebSocket：`ws://<局域网IP>:5678/socket.io/`
+- 教师端：`http://<局域网IP>:<AI_SERVICE_PORT>`（开发默认 6100）
+- WebSocket：`ws://<局域网IP>:<AI_SERVICE_PORT>/socket.io/`
 
 ## 🧾 日志与调试
 

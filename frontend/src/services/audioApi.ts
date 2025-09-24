@@ -1,17 +1,24 @@
 import axios from 'axios';
-import type { 
-  ApiResponse, 
-  AudioFileInfo, 
+import type {
+  ApiResponse,
+  AudioFileInfo,
   BatchAudioGenerateRequest,
-  BatchAudioGenerateResponse 
+  BatchAudioGenerateResponse
 } from '../types';
 
-// const BASE_URL = import.meta.env.DEV ? 'http://localhost:3001/api' : '/api';
-const BASE_URL = '/api';
+const useDevProxy = import.meta.env.DEV
+  && ((import.meta.env.VITE_DEV_ENABLE_PROXY as string | undefined) ?? 'true') !== 'false';
+
+const API_BASE_URL = (() => {
+  if (useDevProxy) return '/api';
+  const value = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (!value) return '/api';
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+})();
 
 // 创建专用的axios实例
 const audioApiClient = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_BASE_URL,
   timeout: 300000, // 5分钟超时，因为批量生成可能需要较长时间
 });
 
@@ -172,7 +179,7 @@ export const audioApi = {
    * 获取语音文件URL（公开访问）
    */
   getAudioFileUrl: (questionId: string, filename: string): string => {
-    return `${BASE_URL}/audio/questions/${questionId}/${filename}`;
+    return `${API_BASE_URL}/audio/questions/${questionId}/${filename}`;
   },
 
   /**
@@ -182,10 +189,10 @@ export const audioApi = {
     try {
       // 公开访问，不需要认证
       const response = await axios.get(
-        `${BASE_URL}/audio/questions/${questionId}/${filename}`,
-        { 
+        `${API_BASE_URL}/audio/questions/${questionId}/${filename}`,
+        {
           responseType: 'blob',
-          timeout: 30000 
+          timeout: 30000
         }
       );
       return response.data;

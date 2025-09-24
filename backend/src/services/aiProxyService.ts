@@ -19,7 +19,7 @@ export interface ProxyResult<T = any> {
 }
 
 // AI服务配置，未设置时默认连接本地服务
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5678';
+const DEFAULT_AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5678';
 
 /**
  * AI代理服务类
@@ -29,7 +29,7 @@ class AIProxyService {
   private timeout: number;
 
   constructor() {
-    this.aiServiceUrl = AI_SERVICE_URL;
+    this.aiServiceUrl = DEFAULT_AI_SERVICE_URL;
     this.timeout = 30000; // 30秒超时
     
     logger.info(`初始化AI代理服务，目标地址: ${this.aiServiceUrl}`);
@@ -175,11 +175,11 @@ class AIProxyService {
    * 获取WebSocket配置 - V2重构版
    * 返回简化的直连配置，支持前端直接连接AI服务
    * 🔧 基于成功demo的简化策略
-   */
+  */
   getWebSocketConfig() {
     // 🎯 V2简化策略：直接返回AI服务地址
-      const directUrl = 'http://localhost:5678';  // 使用HTTP协议，让Socket.IO自动处理
-    
+    const directUrl = this.aiServiceUrl;
+
     logger.info(`V2配置: 返回简化直连地址: ${directUrl}`);
     logger.info('传输策略: polling优先，避免WebSocket升级问题');
 

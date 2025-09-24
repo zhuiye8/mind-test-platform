@@ -3,12 +3,37 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import { createServer } from 'http';
 import { connectDatabase, disconnectDatabase } from './utils/database';
 import { errorHandler } from './middleware/errorHandler';
 
-// 加载环境变量
-dotenv.config();
+const initialEnvKeys = new Set(Object.keys(process.env));
+const loadedEnvKeys = new Set<string>();
+
+function loadEnvFile(filename: string, overrideLoaded = false): void {
+  const envPath = path.resolve(process.cwd(), filename);
+  if (!fs.existsSync(envPath)) return;
+
+  const parsed = dotenv.parse(fs.readFileSync(envPath));
+  for (const [key, value] of Object.entries(parsed)) {
+    const alreadyDefined = process.env[key] !== undefined;
+    const definedByLoader = loadedEnvKeys.has(key);
+    if (!alreadyDefined) {
+      process.env[key] = value;
+      loadedEnvKeys.add(key);
+    } else if (overrideLoaded && definedByLoader && !initialEnvKeys.has(key)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+const nodeEnv = process.env.NODE_ENV || 'development';
+loadEnvFile('.env');
+loadEnvFile('.env.local', true);
+loadEnvFile(`.env.${nodeEnv}`, true);
+loadEnvFile(`.env.${nodeEnv}.local`, true);
 
 // 仅在开发环境清除代理设置，避免影响企业代理环境
 if (process.env.NODE_ENV === 'development' && process.env.CLEAR_PROXY !== 'false') {
@@ -31,15 +56,24 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false // 禁用COEP避免音频文件问题
 }));
 
+const defaultCorsOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3100',
+  'http://127.0.0.1:3100',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173'
+];
+
+const extraCorsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = Array.from(new Set([...defaultCorsOrigins, ...extraCorsOrigins]));
+
 // CORS配置 - 支持多个前端端口和调试
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5173', // Vite开发服务器
-    'http://127.0.0.1:5173', // localhost别名
-    'http://192.168.0.109:5173', // 局域网IP
-    ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : [])
-  ],
+  origin: allowedOrigins,
   credentials: true,
   exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges', 'Content-Type'],
   optionsSuccessStatus: 200 // 支持legacy浏览器

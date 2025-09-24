@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/response';
 import { ExamStatus } from '../types';
 import prisma from '../utils/database';
+import { getPrimaryFrontendOrigin } from '../utils/env';
 
 // 获取教师的分析数据
 export const getTeacherAnalytics = async (req: Request, res: Response): Promise<void> => {
@@ -281,7 +282,7 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
         has_password: !!exam.password,
         shuffle_questions: exam.shuffleQuestions,
         status: exam.status,
-        public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${exam.publicUuid}`,
+        public_url: `${getPrimaryFrontendOrigin()}/exam/${exam.publicUuid}`,
         created_at: exam.createdAt,
         updated_at: exam.updatedAt,
       };

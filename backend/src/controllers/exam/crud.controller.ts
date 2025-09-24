@@ -10,6 +10,7 @@ import {
   ExamStatus
 } from '../../types';
 import prisma from '../../utils/database';
+import { getPrimaryFrontendOrigin } from '../../utils/env';
 import { ExamStatusValidator } from '../../utils/examStatusValidator';
 import { hashPassword } from '../../utils/password';
 
@@ -111,7 +112,7 @@ export const createExam = async (req: Request, res: Response): Promise<void> => 
       shuffle_questions: exam.shuffleQuestions,
       allow_multiple_submissions: exam.allowMultipleSubmissions,
       status: exam.status,
-      public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${exam.publicUuid}`,
+      public_url: `${getPrimaryFrontendOrigin()}/exam/${exam.publicUuid}`,
       created_at: exam.createdAt,
       updated_at: exam.updatedAt,
     }, 201);
@@ -190,7 +191,7 @@ export const getExamById = async (req: Request, res: Response): Promise<void> =>
       shuffle_questions: exam.shuffleQuestions,
       allow_multiple_submissions: exam.allowMultipleSubmissions,
       status: exam.status,
-      public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${exam.publicUuid}`,
+      public_url: `${getPrimaryFrontendOrigin()}/exam/${exam.publicUuid}`,
       created_at: exam.createdAt,
       updated_at: exam.updatedAt,
       teacher_id: teacherId,
@@ -294,7 +295,7 @@ export const updateExam = async (req: Request, res: Response): Promise<void> => 
       shuffle_questions: updatedExam.shuffleQuestions,
       allow_multiple_submissions: updatedExam.allowMultipleSubmissions,
       status: updatedExam.status,
-      public_url: `${process.env.CORS_ORIGIN || 'http://localhost:3000'}/exam/${updatedExam.publicUuid}`,
+      public_url: `${getPrimaryFrontendOrigin()}/exam/${updatedExam.publicUuid}`,
       created_at: updatedExam.createdAt,
       updated_at: updatedExam.updatedAt,
     });

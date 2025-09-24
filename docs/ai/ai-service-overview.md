@@ -7,10 +7,10 @@
 - 合约层: `contract_api` Blueprint（REST 合约与回调）
 - 结果推送: Socket.IO事件推送（支持Flask应用上下文）
 - 环境配置: 支持.env文件和MediaMTX自动检测
-- 运行端口: 5678（统一合约）
+- 运行端口: 可配置（开发默认 6100，生产示例 5678，使用 `AI_SERVICE_PORT` 控制）
 
 ## 运行入口
-- 推荐入口（本机/局域网统一）: `python emotion/app_lan.py`（默认 0.0.0.0:5678）
+- 推荐入口（本机/局域网统一）: `python emotion/app_lan.py`（默认 0.0.0.0:6100，可通过环境变量覆盖）
 
 ## 关键模块
 - `emotion/app_lan.py`：主应用（LAN，建议部署入口）
@@ -23,7 +23,7 @@
   - 多命名空间事件广播（默认+/monitor）
 - `emotion/models/*`：AI 模型加载与推理
 - `emotion/utils/*`：数据处理辅助工具
-- `emotion/config.py`：全局配置（端口、CORS、SocketIO）
+- `emotion/config.py`：全局配置（端口、CORS、SocketIO，支持环境变量覆盖）
 
 ## 数据流架构
 ```
@@ -61,19 +61,25 @@
 - **状态同步**: 自动向教师端和学生端推送结果
 
 ## 统一口径
-- 端口固定 5678
+- 默认端口由 `AI_SERVICE_PORT` 控制（开发 `.env.development` 默认为 6100）
 - 字段命名 snake_case；时间戳 ISO8601 UTC（末尾 Z）
 - 健康检查与配置以合约蓝图返回为准
 - MediaMTX RTSP 地址格式：`rtsp://{host}:8554/{stream_name}`
 
 ## 环境配置
+### 核心环境变量
+- `APP_ENV`: 运行模式（development/production），决定加载 `.env.<env>`
+- `AI_SERVICE_HOST` / `AI_SERVICE_PORT`: Flask/SocketIO 监听地址与端口
+- `AI_SERVICE_PUBLIC_HOST` / `AI_SERVICE_PUBLIC_SCHEME`: 对外暴露 WebSocket 的域名与协议（可选）
+- `BACKEND_BASE_URL` / `BACKEND_API_TOKEN`: 回调后端服务的地址与认证 Token
+- `MEDIAMTX_HOST`: MediaMTX 控制面的地址（例如 `http://127.0.0.1:8889`）
+- `AI_LOG_LEVEL`: 情绪分析日志级别（DEBUG/INFO/...）
+- `FFMPEG_BIN`: 指定 ffmpeg 可执行文件，未设置时自动探测
+
 ### MediaMTX服务器配置
-- **环境变量**: `MEDIAMTX_HOST=http://192.168.0.112:8889`
-- **自动检测**: 未设置环境变量时自动检测MediaMTX位置
-  1. 检测WSL网关地址（如172.27.29.1）
-  2. 尝试常见地址：192.168.0.112、192.168.1.1
-  3. 回退到127.0.0.1
-- **配置文件**: 支持`.env`文件加载环境变量
+- **环境变量**: `MEDIAMTX_HOST=http://127.0.0.1:8889`
+- **自动检测**: 未设置时自动探测局域网常见地址（WSL 网关、`192.168.x.1` 等），最终回退至 `http://127.0.0.1:8889`
+- **配置文件**: 支持 `.env`、`.env.<env>`、`.env.<env>.local` 叠加加载
 
 ## 部署环境
 - **开发环境**: WSL2(AI服务) + Windows(MediaMTX)

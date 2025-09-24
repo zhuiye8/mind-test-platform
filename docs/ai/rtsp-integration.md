@@ -177,7 +177,7 @@ Content-Type: application/json
 
 {
     "stream_name": "exam-xxxx-user-yyyy",
-    "rtsp_url": "rtsp://192.168.0.112:8554/exam-xxxx-user-yyyy"
+    "rtsp_url": "rtsp://<mediamtx-host>:8554/exam-xxxx-user-yyyy"
 }
 ```
 

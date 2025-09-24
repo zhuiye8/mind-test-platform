@@ -33,7 +33,7 @@ def get_mediamtx_host() -> str:
             local_ip = s.getsockname()[0]
         ip_parts = local_ip.split('.')
         if len(ip_parts) == 4:
-            candidates = [f"{'.'.join(ip_parts[:3])}.1", "192.168.0.112", "192.168.1.1", "172.27.29.1"]
+            candidates = [f"{'.'.join(ip_parts[:3])}.1", "192.168.0.94", "192.168.1.1", "172.27.29.1"]
             for candidate in candidates:
                 try:
                     url = f"http://{candidate}:8889"

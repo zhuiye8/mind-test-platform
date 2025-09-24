@@ -95,11 +95,11 @@ const Layout: React.FC = () => {
       label: '考试管理',
     },
     // 只有管理员才能看到教师管理菜单
-    ...(userRole === 'ADMIN' ? [{
-      key: '/teacher-management',
-      icon: <TeamOutlined />,
-      label: '教师管理',
-    }] : []),
+    // ...(userRole === 'ADMIN' ? [{
+    //   key: '/teacher-management',
+    //   icon: <TeamOutlined />,
+    //   label: '教师管理',
+    // }] : []),
     // {
     //   key: '/analytics',
     //   icon: <BarChartOutlined />,
