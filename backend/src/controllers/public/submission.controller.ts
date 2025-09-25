@@ -8,6 +8,7 @@ import { sendSuccess, sendError } from '../../utils/response';
 import { SubmitExamRequest, ExamStatus } from '../../types';
 import prisma from '../../utils/database';
 import { aiAnalysisService } from '../../services/aiAnalysis';
+import { getClientIP } from '../../utils/ipHelper';
 import { stopAIConsumerForStream } from '../../services/webrtcStreamService';
 import { generateStreamName } from '../../utils/streamName';
 import { calculateScore } from './utils';
@@ -70,8 +71,8 @@ export const submitExamAnswers = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    // 获取客户端IP地址
-    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+    // 获取客户端真实IP地址（支持代理环境）
+    const ipAddress = getClientIP(req);
 
     // 获取题目信息用于校验与计分
     const questions = await prisma.question.findMany({

@@ -71,6 +71,10 @@ const extraCorsOrigins = (process.env.CORS_ORIGIN || '')
 
 const allowedOrigins = Array.from(new Set([...defaultCorsOrigins, ...extraCorsOrigins]));
 
+// 配置信任代理以获取真实客户端IP地址
+// 支持nginx反向代理、Docker网络、云服务器等环境
+app.set('trust proxy', true);
+
 // CORS配置 - 支持多个前端端口和调试
 app.use(cors({
   origin: allowedOrigins,
