@@ -173,11 +173,8 @@ def create_session():
 
             # 同步为 RTSP 映射（通过 shared_sessions 与 app_lan 使用同一对象即可）
 
-            # 同时保存到文件存储作为备份
-            session_file = f"/home/aaron/心理测试平台/emotion/data/sessions/{session_id}.json"
-            os.makedirs(os.path.dirname(session_file), exist_ok=True)
-            with open(session_file, 'w') as f:
-                json.dump(session_data, f, indent=2)
+            # 注意：不再重复保存文件，避免覆盖DataManager的完整数据
+            # DataManager已经保存了包含statistics字段的完整会话数据
             
             # 通知教师端有新学生连接
             try:
@@ -281,6 +278,22 @@ def end_session():
         # 尽可能补全 exam_id
         if not session_data.get('exam_id') and meta.get('exam_id'):
             session_data['exam_id'] = meta.get('exam_id')
+        
+        # 防御性检查：确保statistics字段存在，避免end_session时出错
+        if 'statistics' not in session_data:
+            logger.warning(f"⚠️ 会话 {session_id} 缺少statistics字段，添加默认值")
+            session_data['statistics'] = {
+                'total_audio_analyses': 0,
+                'total_video_analyses': 0,
+                'total_heart_rate_readings': 0,
+                'dominant_audio_emotion': None,
+                'dominant_video_emotion': None,
+                'average_heart_rate': 0.0,
+                'heart_rate_range': {'min': 0, 'max': 0},
+                'audio_emotion_distribution': {},
+                'video_emotion_distribution': {},
+                'duration_seconds': 0.0
+            }
 
         # 先保存一次，确保 exam_result_id 写入文件
         dm.save_session(session_data)
@@ -397,14 +410,4 @@ def health_check():
         }), 500
 
 
-# 兜底：若主应用存在同路径的本地实现，这里拦截并统一走契约实现
-@contract_bp.before_app_request
-def _enforce_contract_create_end():
-    try:
-        if request.path == '/api/create_session' and request.method == 'POST':
-            return create_session()
-        if request.path == '/api/end_session' and request.method == 'POST':
-            return end_session()
-    except Exception as _:
-        # 出错则由后续路由继续处理
-        return None
+# 路由拦截器已删除，避免与app_lan.py中的路由冲突

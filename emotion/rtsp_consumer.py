@@ -500,9 +500,9 @@ class _ConsumerThread(threading.Thread):
                     # 分析失败不阻断
                     pass
 
-                # 限频发送（每秒最多 10 次）
+                # 限频发送（每秒最多 2 次，降低频率避免前端渲染问题）
                 now = time.time()
-                if _socketio is not None and (now - last_emit) > 0.1:
+                if _socketio is not None and (now - last_emit) > 0.5:
                     payload = {
                         'session_id': self.stream_name,
                         'stream_name': self.stream_name,

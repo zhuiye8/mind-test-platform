@@ -131,6 +131,15 @@ websocket_handler = WebSocketHandler(socketio)
 # 初始化 RTSP 消费管理器 - 传递app实例以支持应用上下文
 set_rtsp_socketio(socketio, app)
 rtsp_manager = RTSPConsumerManager(model_manager)
+
+# 清空RTSP管理器中的残留流
+try:
+    if rtsp_manager and hasattr(rtsp_manager, '_threads'):
+        for stream in list(rtsp_manager._threads.keys()):
+            rtsp_manager.stop(stream)
+        print(f"[启动清理] 停止了 {len(rtsp_manager._threads)} 个RTSP流")
+except Exception as e:
+    print(f"[启动清理] RTSP清理失败: {e}")
 # 运行期绑定：stream_name -> { session_id, student_id }
 _manual_stream_bindings = {}
 _sid_registry = {}  # monitor_sid -> default_sid
@@ -250,6 +259,37 @@ student_streams = {}
 # 将student_sessions/streams 暴露给契约API使用
 app.student_sessions = student_sessions
 app.student_streams = student_streams
+
+# 启动时清理旧会话
+def cleanup_on_startup():
+    """服务启动时清理旧会话和临时文件"""
+    print("[启动清理] 开始清理旧会话...")
+    
+    # 1. 清空内存中的会话
+    student_sessions.clear()
+    student_streams.clear()
+    active_sessions.clear()
+    print("[启动清理] 内存会话已清空")
+    
+    # 2. 清理过期会话文件（保留最近7天的100个会话）
+    try:
+        from utils.cleanup_manager import CleanupManager
+        cleanup_mgr = CleanupManager()
+        deleted = cleanup_mgr.cleanup_old_sessions(days_to_keep=7, max_sessions=100)
+        print(f"[启动清理] 删除了 {deleted} 个过期会话文件")
+        
+        # 3. 清理临时文件
+        deleted_temp = cleanup_mgr.cleanup_temp_files()
+        print(f"[启动清理] 删除了 {deleted_temp} 个临时文件")
+    except Exception as e:
+        print(f"[启动清理] 清理文件失败: {e}")
+    
+    # 4. 确保RTSP管理器状态清空（在初始化后执行）
+    print("[启动清理] RTSP流状态将在初始化后清空")
+    print("[启动清理] 启动清理完成")
+
+# 执行启动清理
+cleanup_on_startup()
 
 # 模型加载状态
 models_loaded = False
@@ -598,6 +638,63 @@ try:
 except Exception:
     pass
 
+# =================== 统一会话清理函数 ===================
+
+def cleanup_session_completely(session_id: str, reason: str = "normal"):
+    """完整清理会话的所有资源"""
+    print(f"[会话清理] 开始清理会话 {session_id[:8]}... 原因: {reason}")
+    
+    try:
+        # 1. 获取会话信息
+        session_info = student_sessions.get(session_id, {})
+        stream_name = session_info.get('stream_name')
+        
+        # 2. 停止RTSP流
+        if stream_name:
+            try:
+                ok = rtsp_manager.stop(stream_name)
+                print(f"[会话清理] RTSP流已停止: {stream_name}, 结果: {ok}")
+            except Exception as e:
+                print(f"[会话清理] 停止RTSP流失败: {e}")
+        
+        # 3. 清理内存中的会话
+        student_sessions.pop(session_id, None)
+        student_streams.pop(session_id, None)
+        active_sessions.pop(session_id, None)
+        print(f"[会话清理] 内存会话已清理")
+        
+        # 4. 标记磁盘文件为已结束
+        try:
+            session_data = data_manager.load_session(session_id)
+            if session_data:
+                session_data['end_time'] = datetime.now().isoformat()
+                session_data['status'] = 'ended'
+                session_data['end_reason'] = reason
+                data_manager.save_session(session_data)
+                print(f"[会话清理] 会话文件已更新")
+        except Exception as e:
+            print(f"[会话清理] 更新会话文件失败: {e}")
+        
+        # 5. 发送WebSocket通知
+        try:
+            socketio.emit('student_disconnected', {
+                'session_id': session_id,
+                'student_id': session_info.get('student_id'),
+                'stream_name': stream_name,
+                'reason': reason,
+                'timestamp': datetime.now().isoformat()
+            })
+            print(f"[会话清理] WebSocket通知已发送")
+        except Exception as e:
+            print(f"[会话清理] WebSocket通知失败: {e}")
+        
+        print(f"[会话清理] 会话 {session_id[:8]}... 清理完成")
+        return True
+        
+    except Exception as e:
+        print(f"[会话清理] 清理过程中发生错误: {e}")
+        return False
+
 # =================== 新的简化API接口 ===================
 
 @app.route('/api/create_session', methods=['POST'])
@@ -861,38 +958,15 @@ def end_session_api():
         try:
             result = simple_student_api.end_detection_session(session_id)
             
-            # 更新学生会话状态
+            # 使用统一清理函数清理所有资源
             if session_id in student_sessions:
-                student_info = student_sessions[session_id]
-                student_sessions[session_id]['status'] = 'stopped'
-                student_sessions[session_id]['end_time'] = datetime.now().isoformat()
+                cleanup_session_completely(session_id, "api_end_session")
                 
                 # 通知教师端学生停止检测
                 socketio.emit('student_detection_stopped', {
                     'session_id': session_id,
                     'timestamp': datetime.now().isoformat()
                 })
-                
-                # 通知前端删除学生卡片
-                socketio.emit('student_disconnected', {
-                    'session_id': session_id,
-                    'student_id': student_info.get('student_id'),
-                    'stream_name': student_info.get('stream_name'),
-                    'timestamp': datetime.now().isoformat()
-                })
-                
-                # 停止RTSP流消费
-                stream_name = student_info.get('stream_name')
-                if stream_name:
-                    try:
-                        ok = rtsp_manager.stop(stream_name)
-                        print(f"[AI会话] 已停止RTSP流: {stream_name}, 结果: {ok}")
-                    except Exception as e:
-                        print(f"[AI会话] 停止RTSP流失败: {e}")
-                
-                # 清理student_sessions
-                del student_sessions[session_id]
-                print(f"[AI会话] 学生 {student_info.get('student_id')} 已从监控列表中移除")
             
             # 重置PPG心率检测器
             try:
@@ -1126,27 +1200,15 @@ def disconnect_student():
         student_info = student_sessions[session_id]
         student_id = student_info.get('student_id', session_id[:8])
         
-        # 1. 从student_sessions中移除
-        removed_session = student_sessions.pop(session_id, None)
-        
-        # 2. 从student_streams中移除视音频流数据
-        removed_streams = student_streams.pop(session_id, None)
-        
-        # 2.5. 停止RTSP流消费
-        stream_name = student_info.get('stream_name')
-        if stream_name:
-            try:
-                ok = rtsp_manager.stop(stream_name)
-                print(f"[断开学生] 已停止RTSP流: {stream_name}, 结果: {ok}")
-            except Exception as e:
-                print(f"[断开学生] 停止RTSP流失败: {e}")
-        
-        # 3. 停止相关的API会话处理
+        # 停止相关的API会话处理
         if simple_student_api:
             disconnect_result = simple_student_api.force_disconnect_session(session_id)
             print(f"SimpleAPI断开结果: {disconnect_result}")
         
-        # 4. 通过WebSocket通知前端该学生已断开
+        # 使用统一清理函数清理所有资源
+        cleanup_session_completely(session_id, "teacher_disconnect")
+        
+        # 额外的教师断开通知
         try:
             websocket_handler.emit_to_all('student_disconnected', {
                 'session_id': session_id,
@@ -2349,6 +2411,27 @@ if __name__ == '__main__':
 
     model_thread = threading.Thread(target=load_models_async, daemon=True)
     model_thread.start()
+
+    # 启动定期清理任务
+    def periodic_cleanup():
+        """定期清理任务"""
+        import time
+        while True:
+            time.sleep(3600)  # 每小时执行一次
+            try:
+                from utils.cleanup_manager import CleanupManager
+                cleanup_mgr = CleanupManager()
+                deleted_sessions = cleanup_mgr.cleanup_old_sessions(days_to_keep=7, max_sessions=100)
+                deleted_temp = cleanup_mgr.cleanup_temp_files()
+                print(f"[定期清理] 执行完成 - {datetime.now()}")
+                print(f"[定期清理] 删除了 {deleted_sessions} 个会话文件, {deleted_temp} 个临时文件")
+            except Exception as e:
+                print(f"[定期清理] 失败: {e}")
+    
+    # 启动定期清理线程
+    cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
+    cleanup_thread.start()
+    print("定期清理任务已启动（每小时执行一次）")
 
     print("AI模型正在后台加载中，请稍候...")
 

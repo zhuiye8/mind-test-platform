@@ -8,7 +8,10 @@ class DataManager:
     """数据管理类，负责会话数据的存储和读取"""
     
     def __init__(self):
-        self.sessions_folder = Config.SESSIONS_FOLDER
+        # 使用绝对路径避免工作目录变化导致的问题
+        import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.sessions_folder = os.path.join(base_dir, Config.SESSIONS_FOLDER)
         self.ensure_directories()
     
     def ensure_directories(self):
@@ -240,6 +243,22 @@ class DataManager:
 
     def _calculate_final_statistics(self, session_data: Dict[str, Any]):
         """计算最终统计信息"""
+        # 防御性检查：确保statistics字段存在
+        if 'statistics' not in session_data:
+            print(f"⚠️ statistics字段缺失，为会话 {session_data.get('session_id', 'unknown')} 初始化默认值")
+            session_data['statistics'] = {
+                'total_audio_analyses': 0,
+                'total_video_analyses': 0,
+                'total_heart_rate_readings': 0,
+                'dominant_audio_emotion': None,
+                'dominant_video_emotion': None,
+                'average_heart_rate': 0.0,
+                'heart_rate_range': {'min': 0, 'max': 0},
+                'audio_emotion_distribution': {},
+                'video_emotion_distribution': {},
+                'duration_seconds': 0.0
+            }
+        
         audio_emotions = session_data.get('audio_emotions', [])
         video_emotions = session_data.get('video_emotions', [])
 
@@ -257,7 +276,7 @@ class DataManager:
             if dominant:
                 video_emotion_counts[dominant] = video_emotion_counts.get(dominant, 0) + 1
 
-        # 添加到统计信息
+        # 安全地添加到统计信息
         session_data['statistics']['audio_emotion_distribution'] = audio_emotion_counts
         session_data['statistics']['video_emotion_distribution'] = video_emotion_counts
 
