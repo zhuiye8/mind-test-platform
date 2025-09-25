@@ -101,6 +101,7 @@ export async function matchAIDataForExamResult(examResultId: string, toleranceSe
   matches: QuestionEmotionMatch[];
   aggregates: Array<{ model: string; key: string; value: any }>;
   anomalies: Array<{ code: string; severity: 'LOW' | 'MEDIUM' | 'HIGH'; from: Date; to: Date }>;
+  aiDataAvailable: boolean;
 }> {
   const fs = await import('fs/promises');
   const path = await import('path');
@@ -116,7 +117,17 @@ export async function matchAIDataForExamResult(examResultId: string, toleranceSe
       console.log(`[AI匹配] 从文件读取数据: ${examResultId}, 视频:${emotionData.video_emotions?.length || 0}, 音频:${emotionData.audio_emotions?.length || 0}, 心率:${emotionData.heart_rate_data?.length || 0}`);
     } catch (fileError) {
       console.log(`[AI匹配] 文件不存在: ${filePath}`);
-      return { matches: [], aggregates: [], anomalies: [] };
+      const latestSession = await prisma.aiSession.findFirst({
+        where: { examResultId },
+        orderBy: { createdAt: 'desc' },
+      });
+      return {
+        sessionId: latestSession?.id,
+        matches: [],
+        aggregates: [],
+        anomalies: [],
+        aiDataAvailable: false,
+      };
     }
     
     // 2. 获取考试结果和题目时间线
@@ -130,7 +141,13 @@ export async function matchAIDataForExamResult(examResultId: string, toleranceSe
     });
     
     if (!examResult) {
-      return { matches: [], aggregates: [], anomalies: [] };
+      return {
+        sessionId: emotionData?.session_id,
+        matches: [],
+        aggregates: [],
+        anomalies: [],
+        aiDataAvailable: false,
+      };
     }
     
     // 3. 处理聚合数据
@@ -265,17 +282,34 @@ export async function matchAIDataForExamResult(examResultId: string, toleranceSe
       });
     }
     
-    console.log(`[AI匹配] 匹配完成: ${examResultId}, 题目数=${matches.length}, 聚合数=${aggregates.length}, 异常数=${anomalies.length}`);
-    
+    const aiDataAvailable = Boolean(
+      (emotionData.video_emotions && emotionData.video_emotions.length > 0) ||
+      (emotionData.audio_emotions && emotionData.audio_emotions.length > 0) ||
+      (emotionData.heart_rate_data && emotionData.heart_rate_data.length > 0)
+    );
+
+    console.log(`[AI匹配] 匹配完成: ${examResultId}, 题目数=${matches.length}, 聚合数=${aggregates.length}, 异常数=${anomalies.length}, 有AI数据=${aiDataAvailable}`);
+
     return {
       sessionId: emotionData.session_id,
       matches,
       aggregates,
-      anomalies
+      anomalies,
+      aiDataAvailable
     };
     
   } catch (error) {
     console.error(`[AI匹配] 处理失败: ${examResultId}`, error);
-    return { matches: [], aggregates: [], anomalies: [] };
+    const latestSession = await prisma.aiSession.findFirst({
+      where: { examResultId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      sessionId: latestSession?.id,
+      matches: [],
+      aggregates: [],
+      anomalies: [],
+      aiDataAvailable: false,
+    };
   }
 }

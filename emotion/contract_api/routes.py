@@ -24,7 +24,17 @@ contract_bp = Blueprint('contract_api', __name__, url_prefix='/api')
 # 统一 /api/health 返回格式（即便主应用定义了同路径，也在此拦截并返回契约格式）
 @contract_bp.before_app_request
 def _enforce_contract_health():
+    """统一处理/api/health端点，避免与Socket.IO请求冲突"""
     try:
+        # 1. 安全检查：确保request对象正常
+        if not request or not hasattr(request, 'path'):
+            return None  # 隐式返回None，让请求继续
+            
+        # 2. 跳过Socket.IO相关请求，避免干扰WebSocket通信
+        if request.path and request.path.startswith('/socket.io/'):
+            return None
+            
+        # 3. 只处理health端点
         if request.path == '/api/health' and request.method == 'GET':
             return jsonify({
                 "status": "healthy",
@@ -32,9 +42,18 @@ def _enforce_contract_health():
                 "version": "1.0.0",
                 "timestamp": ContractDataAdapter.to_iso8601_utc(datetime.now(timezone.utc))
             }), 200
-    except Exception:
-        # 发生异常不阻断其他请求流转
-        return None
+            
+    except Exception as e:
+        # 4. 记录错误但不破坏请求流程
+        try:
+            logger.debug(f"before_app_request exception: {e}")
+        except:
+            pass  # 避免日志记录也出现异常
+        # 不返回任何值，让Flask继续正常处理
+        pass
+    
+    # 5. 对于其他请求，返回None让其继续
+    return None
 
 
 def get_session_manager():

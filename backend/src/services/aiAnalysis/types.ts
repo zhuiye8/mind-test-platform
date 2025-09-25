@@ -81,6 +81,8 @@ export interface ReportResponse {
   reportFile?: string | undefined;
   error?: string | undefined;
   cached?: boolean;
+  aiDataAvailable?: boolean;
+  warnings?: string[];
 }
 
 export interface WebSocketHealthResponse {

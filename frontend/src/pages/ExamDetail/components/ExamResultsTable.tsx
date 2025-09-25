@@ -117,6 +117,18 @@ const ExamResultsTable: React.FC<Props> = ({
       },
     },
     {
+      title: 'AI监控',
+      key: 'ai_status',
+      width: 100,
+      render: (_, record: ExamResult) => (
+        <Tooltip title={record.ai_session_id ? `AI会话ID: ${record.ai_session_id}` : '本次考试未启用AI监控或已跳过'}>
+          <Tag color={record.ai_session_id ? 'green' : 'default'}>
+            {record.ai_session_id ? '已启用' : '未启用'}
+          </Tag>
+        </Tooltip>
+      ),
+    },
+    {
       title: '操作',
       key: 'actions',
       width: 180,
@@ -192,4 +204,3 @@ const ExamResultsTable: React.FC<Props> = ({
 };
 
 export default ExamResultsTable;
-

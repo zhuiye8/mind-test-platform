@@ -54,10 +54,14 @@ export class ReportGenerator {
           
           // 提取报告内容
           let cachedReport = '';
+          let cachedWarnings: string[] | undefined;
+          let cachedAiUsed: boolean | undefined;
           if (typeof existingReport.content === 'object' && existingReport.content !== null) {
             cachedReport = (existingReport.content as any).text || 
                           (existingReport.content as any).report || 
                           JSON.stringify(existingReport.content);
+            cachedWarnings = (existingReport.content as any).warnings;
+            cachedAiUsed = (existingReport.content as any).aiDataUsed;
           } else if (typeof existingReport.content === 'string') {
             cachedReport = existingReport.content;
           }
@@ -65,13 +69,23 @@ export class ReportGenerator {
           if (cachedReport) {
             console.log(`✅ 返回缓存报告，长度: ${cachedReport.length} 字符`);
             console.log(`=== AI报告生成结束（缓存） ===\n`);
-            
-            return {
+
+            const response: ReportResponse = {
               success: true,
               report: cachedReport,
               reportFile: existingReport.filename || undefined,
               cached: true,
             };
+
+            if (typeof cachedAiUsed === 'boolean') {
+              response.aiDataAvailable = cachedAiUsed;
+            }
+
+            if (Array.isArray(cachedWarnings)) {
+              response.warnings = cachedWarnings;
+            }
+
+            return response;
           }
         }
         
@@ -97,22 +111,8 @@ export class ReportGenerator {
    * 生成AI心理分析报告的内部实现（支持重试）
    */
   private async generateReportWithRetry(examResultId: string, maxRetries: number): Promise<ReportResponse> {
+    const warnings: string[] = [];
     try {
-      // 在生成报告前进行AI数据就绪检查：本地JSON文件是否已落盘
-      // 轻量就绪判据：文件存在且大小>1KB
-      try {
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const filePath = path.join(process.cwd(), 'storage', 'ai-sessions', `${examResultId}.json`);
-        const st = await fs.stat(filePath).catch(() => null as any);
-        if (!st || st.size < 1024) {
-          return { success: false, error: 'AI_DATA_TRANSFERRING' };
-        }
-      } catch (_) {
-        // 文件系统异常按未就绪处理
-        return { success: false, error: 'AI_DATA_TRANSFERRING' };
-      }
-
       // 获取考试结果和相关数据
       const examResult = await prisma.examResult.findUnique({
         where: { id: examResultId },
@@ -159,15 +159,19 @@ export class ReportGenerator {
       }
       console.log(`[AI分析] 构造了 ${questionsData.length} 条题目数据`);
 
+      const aiMatchResult = await matchAIDataForExamResult(examResultId);
+      if (!aiMatchResult.aiDataAvailable) {
+        warnings.push('AI_DATA_UNAVAILABLE');
+      }
+
       // 是否走后端 LLM（默认 true）
       const backendOnly = process.env.AI_REPORT_BACKEND_ONLY !== 'false';
       if (backendOnly) {
         // 1) 匹配 AI 数据（checkpoints/anomalies/aggregates）
-        const { sessionId, matches, aggregates, anomalies } = await matchAIDataForExamResult(examResultId);
+        const { sessionId, matches, aggregates, anomalies, aiDataAvailable } = aiMatchResult;
         if (!sessionId) {
           console.warn('[AI分析] 未找到AI会话数据，报告将缺少多模态融合');
         }
-
         // 2) 构建 Prompt
         const prompt = buildReportPrompt({
           studentId: examResult.participantId,
@@ -176,6 +180,7 @@ export class ReportGenerator {
           matches,
           aggregates,
           anomalies,
+          aiDataAvailable,
         });
 
         // 3) 调用通用 LLM
@@ -189,7 +194,7 @@ export class ReportGenerator {
             reportType: 'comprehensive',
             status: 'completed',
             progress: 100,
-            content: { text: reportText },
+            content: { text: reportText, aiDataUsed: aiDataAvailable, warnings },
             filename: `ai_report_${examResultId}_${Date.now()}.txt`,
             fileFormat: 'txt',
             completedAt: new Date(),
@@ -197,7 +202,7 @@ export class ReportGenerator {
         });
         console.log(`[AI分析] 报告已保存到数据库，ID: ${aiReport.id}`);
 
-        return { success: true, report: reportText, reportFile: aiReport.filename || undefined };
+        return { success: true, report: reportText, reportFile: aiReport.filename || undefined, aiDataAvailable, warnings };
       }
 
       // 兼容旧路径：调用 AI 服务 analyze_questions（保留回滚能力）
@@ -223,30 +228,31 @@ export class ReportGenerator {
             reportType: 'comprehensive',
             status: 'completed',
             progress: 100,
-            content: { text: response.data.report },
+            content: { text: response.data.report, aiDataUsed: aiMatchResult.aiDataAvailable, warnings },
             filename: response.data.report_file || `ai_report_${examResultId}_${Date.now()}.txt`,
             fileFormat: 'txt',
             completedAt: new Date(),
           },
         });
         console.log(`[AI分析] 报告已保存到数据库（外部服务），ID: ${aiReport.id}`);
-        return { success: true, report: response.data.report, reportFile: response.data.report_file || undefined };
+        return { success: true, report: response.data.report, reportFile: response.data.report_file || undefined, aiDataAvailable: aiMatchResult.aiDataAvailable, warnings };
       } else {
         return { success: false, error: response.data.message || 'AI分析失败' };
       }
     } catch (error: any) {
       console.error('[AI分析] 报告生成请求失败:', error);
-      
+
       // 如果有重试次数，尝试重试
       if (maxRetries > 0) {
         console.log(`[AI分析] 重试报告生成，剩余 ${maxRetries} 次`);
         await new Promise(resolve => setTimeout(resolve, 2000)); // 等待2秒
         return this.generateReportWithRetry(examResultId, maxRetries - 1);
       }
-      
+
       return {
         success: false,
         error: error.response?.data?.message || error.message || 'AI服务连接失败',
+        warnings,
       };
     }
   }

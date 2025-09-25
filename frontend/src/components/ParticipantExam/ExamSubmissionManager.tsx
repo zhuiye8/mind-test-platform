@@ -29,6 +29,7 @@ interface ExamSubmissionManagerProps {
   onSubmissionSuccess?: (result: any) => void;
   onSubmissionError?: (error: string) => void;
   onSubmissionCancel?: () => void;
+  onTimeoutInvalid?: (details?: { validationErrors: string[] }) => void;
 }
 
 interface SubmissionState {
@@ -38,6 +39,7 @@ interface SubmissionState {
   retryCount: number;
   showConfirmModal: boolean;
   validationErrors: string[];
+  timeoutInvalid: boolean;
   result: any;
 }
 
@@ -59,7 +61,8 @@ const ExamSubmissionManager = forwardRef<ExamSubmissionManagerRef, ExamSubmissio
     onSubmissionStart,
     onSubmissionSuccess,
     onSubmissionError,
-    onSubmissionCancel
+    onSubmissionCancel,
+    onTimeoutInvalid
   },
   ref
 ) => {
@@ -70,6 +73,7 @@ const ExamSubmissionManager = forwardRef<ExamSubmissionManagerRef, ExamSubmissio
     retryCount: 0,
     showConfirmModal: false,
     validationErrors: [],
+    timeoutInvalid: false,
     result: null
   });
 
@@ -191,7 +195,18 @@ const ExamSubmissionManager = forwardRef<ExamSubmissionManagerRef, ExamSubmissio
   // 显示提交确认对话框（依赖已定义的 handleSubmitExam）
   const showSubmissionConfirm = useCallback((isTimeout: boolean = false) => {
     const validationErrors = validateAnswers();
-    
+
+    if (isTimeout && validationErrors.length > 0) {
+      setSubmissionState(prev => ({
+        ...prev,
+        validationErrors,
+        timeoutInvalid: true,
+        showConfirmModal: false,
+        error: null,
+      }));
+      return;
+    }
+
     setSubmissionState(prev => ({
       ...prev,
       showConfirmModal: true,
@@ -226,6 +241,17 @@ const ExamSubmissionManager = forwardRef<ExamSubmissionManagerRef, ExamSubmissio
     onSubmissionCancel?.();
   }, [onSubmissionCancel]);
 
+  const handleTimeoutInvalidConfirm = useCallback(() => {
+    setSubmissionState(prev => {
+      onTimeoutInvalid?.({ validationErrors: prev.validationErrors });
+      return {
+        ...prev,
+        timeoutInvalid: false,
+        validationErrors: [],
+      };
+    });
+  }, [onTimeoutInvalid]);
+
   // 获取答题统计
   const getAnswerStats = useCallback(() => {
     const totalQuestions = questions.length;
@@ -244,6 +270,39 @@ const ExamSubmissionManager = forwardRef<ExamSubmissionManagerRef, ExamSubmissio
 
   return (
     <>
+      <Modal
+        title="考试已结束"
+        open={submissionState.timeoutInvalid}
+        footer={[
+          <Button key="confirm" type="primary" onClick={handleTimeoutInvalidConfirm}>
+            我知道了
+          </Button>,
+        ]}
+        closable={false}
+        centered
+      >
+        <Result
+          status="warning"
+          title="考试时间已到，仍有必答题未完成"
+          subTitle="本次作答已作废，请与监考老师联系重新安排考试。"
+          icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
+        />
+        {submissionState.validationErrors.length > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            message="未完成的题目"
+            description={
+              <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
+                {submissionState.validationErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            }
+          />
+        )}
+      </Modal>
+
       {/* 提交确认对话框 */}
       <Modal
         title={

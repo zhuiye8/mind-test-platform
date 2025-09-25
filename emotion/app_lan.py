@@ -69,7 +69,7 @@ import time
 import socket
 import numpy as np
 from PIL import Image
-from datetime import datetime
+from datetime import datetime, timezone
 from config import Config
 from lan.stream_utils import compute_stream_name
 from lan.mediamtx import get_mediamtx_host, get_mediamtx_hostname, build_rtsp_url, get_local_ip
@@ -168,6 +168,9 @@ def _map_stream_to_session(stream_name: str):
         pass
     return None
 set_rtsp_session_mapper(_map_stream_to_session)
+
+SESSION_INACTIVITY_TIMEOUT = int(os.environ.get('AI_SESSION_INACTIVITY_TIMEOUT', '120') or 0)
+SESSION_INACTIVITY_SWEEP = int(os.environ.get('AI_SESSION_INACTIVITY_SWEEP', '30') or 30)
 
 # 提供手动绑定接口，便于监控页在点击学生时绑定映射
 @app.route('/api/monitor/bind', methods=['POST'])
@@ -695,6 +698,68 @@ def cleanup_session_completely(session_id: str, reason: str = "normal"):
         print(f"[会话清理] 清理过程中发生错误: {e}")
         return False
 
+def _parse_last_activity(value):
+    """将 last_activity/start_time 解析为 datetime"""
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    if isinstance(value, str) and value:
+        try:
+            ts_str = value.strip()
+            if ts_str.endswith('Z'):
+                ts_str = ts_str.replace('Z', '+00:00')
+            elif 'T' in ts_str and '+' not in ts_str:
+                ts_str = ts_str + '+00:00'
+            parsed = datetime.fromisoformat(ts_str)
+            return parsed.replace(tzinfo=None)
+        except Exception:
+            return None
+    return None
+
+
+def periodic_cleanup():
+    """定期清理任务"""
+    while True:
+        time.sleep(3600)  # 每小时执行一次
+        try:
+            from utils.cleanup_manager import CleanupManager
+            cleanup_mgr = CleanupManager()
+            deleted_sessions = cleanup_mgr.cleanup_old_sessions(days_to_keep=7, max_sessions=100)
+            deleted_temp = cleanup_mgr.cleanup_temp_files()
+            print(f"[定期清理] 执行完成 - {datetime.now()}")
+            print(f"[定期清理] 删除了 {deleted_sessions} 个会话文件, {deleted_temp} 个临时文件")
+        except Exception as e:
+            print(f"[定期清理] 失败: {e}")
+
+
+def monitor_inactive_sessions():
+    if SESSION_INACTIVITY_TIMEOUT <= 0:
+        return
+
+    sweep_interval = max(10, SESSION_INACTIVITY_SWEEP)
+    print(f"[超时清理] 将每 {sweep_interval}s 检查一次，超时阈值 {SESSION_INACTIVITY_TIMEOUT}s")
+
+    while True:
+        time.sleep(sweep_interval)
+        try:
+            now = datetime.utcnow()
+            stale_sessions = []
+            for session_id, session_data in list(student_sessions.items()):
+                if session_data.get('status') != 'active':
+                    continue
+                last_ts = session_data.get('last_activity') or session_data.get('start_time')
+                last_dt = _parse_last_activity(last_ts)
+                if not last_dt:
+                    continue
+                inactivity = (now - last_dt).total_seconds()
+                if inactivity >= SESSION_INACTIVITY_TIMEOUT:
+                    stale_sessions.append((session_id, inactivity))
+
+            for session_id, inactivity in stale_sessions:
+                print(f"[超时清理] 会话 {session_id[:8]}... 已 {int(inactivity)}s 无音视频数据，自动断开")
+                cleanup_session_completely(session_id, 'inactivity_timeout')
+        except Exception as e:
+            print(f"[超时清理] 检查失败: {e}")
+
 # =================== 新的简化API接口 ===================
 
 @app.route('/api/create_session', methods=['POST'])
@@ -721,9 +786,9 @@ def create_session_api():
                 'session_id': session_id,
                 'student_id': student_id,
                 'exam_id': exam_id,
-                'start_time': datetime.now().isoformat(),
+                'start_time': datetime.now(timezone.utc).isoformat(),
                 'status': 'active',
-                'last_activity': datetime.now().isoformat(),
+                'last_activity': datetime.now(timezone.utc).isoformat(),
                 'stream_name': stream_name
             }
             
@@ -1099,33 +1164,68 @@ def get_student_sessions():
     """获取学生端会话列表（用于教师端监控）"""
     try:
         # 清理过期会话（超过10分钟的非活跃会话，测试期间设置较短时间）
-        current_time = datetime.now()
+        current_time = datetime.now(timezone.utc)
         expired_sessions = []
+        
+        # 调试信息：记录当前时间和会话统计
+        total_sessions = len(student_sessions)
+        if total_sessions > 0:
+            print(f"🔍 [会话清理] 当前UTC时间: {current_time}, 总会话数: {total_sessions}")
         
         for session_id, session_data in student_sessions.items():
             try:
                 ts_str = session_data.get('last_activity', session_data.get('start_time'))
-                if isinstance(ts_str, str):
-                    # 处理不同的时间格式：Z后缀、+00:00后缀、或本地时间
+                
+                # 增强错误处理和数据验证
+                if not ts_str or (isinstance(ts_str, str) and not ts_str.strip()):
+                    # 空值或空字符串，使用当前时间
+                    print(f"⚠️ 会话 {session_id[:8]} 时间字段为空，使用当前时间")
+                    last_activity = current_time
+                elif isinstance(ts_str, str):
+                    # 标准化时间字符串处理
+                    ts_str = ts_str.strip()
+                    
+                    # 处理不同的时间格式：Z后缀、时区后缀、或本地时间
                     if ts_str.endswith('Z'):
                         ts_norm = ts_str.replace('Z', '+00:00')
-                    elif '+00:00' in ts_str or ts_str.endswith('+00:00'):
+                    elif '+' in ts_str and ts_str.count('+') == 1:
+                        # 已经有时区信息
                         ts_norm = ts_str
+                    elif 'T' in ts_str:
+                        # ISO格式但无时区信息，假设为UTC
+                        ts_norm = ts_str + '+00:00'
                     else:
-                        # 假设是本地时间，添加时区信息
-                        ts_norm = ts_str + '+00:00' if 'T' in ts_str and '+' not in ts_str and 'Z' not in ts_str else ts_str
+                        # 其他格式，记录警告并跳过清理
+                        print(f"⚠️ 会话 {session_id[:8]} 时间格式异常: {repr(ts_str)}")
+                        continue
+                    
                     last_activity = datetime.fromisoformat(ts_norm)
                 elif isinstance(ts_str, datetime):
                     last_activity = ts_str
                 else:
+                    # 不支持的数据类型
+                    print(f"⚠️ 会话 {session_id[:8]} 时间类型异常: {type(ts_str)}")
                     last_activity = current_time
 
+                # 检查会话是否过期（10分钟）
                 if (current_time - last_activity).total_seconds() > 600:
                     expired_sessions.append(session_id)
-                    print(f"清理过期会话: {session_id[:8]}...")
-            except Exception:
-                # 解析失败时不立即清理，采用当前时间作为最后活动时间以避免刚创建即被清理
-                print(f"时间解析异常，保留会话: {session_id[:8]}...")
+                    print(f"清理过期会话: {session_id[:8]}... (最后活动: {last_activity})")
+                    
+            except Exception as e:
+                # 记录详细的错误信息用于调试
+                print(f"⚠️ 时间解析异常，保留会话 {session_id[:8]}: {e}")
+                print(f"   原始数据: last_activity={repr(session_data.get('last_activity'))}, start_time={repr(session_data.get('start_time'))}")
+                
+                # 标记失败次数（如果该功能存在）
+                if 'parse_failures' not in session_data:
+                    session_data['parse_failures'] = 0
+                session_data['parse_failures'] += 1
+                
+                # 超过5次解析失败，强制清理
+                if session_data['parse_failures'] > 5:
+                    expired_sessions.append(session_id)
+                    print(f"强制清理解析失败的会话: {session_id[:8]}... (失败次数: {session_data['parse_failures']})")
             # 确保存在 stream_name 字段
             if 'stream_name' not in session_data:
                 try:
@@ -1865,7 +1965,7 @@ def handle_audio_data(data):
 
         # 更新学生会话活动时间
         if session_id in student_sessions:
-            student_sessions[session_id]['last_activity'] = datetime.now().isoformat()
+            student_sessions[session_id]['last_activity'] = datetime.now(timezone.utc).isoformat()
             print(f"[音频转发] 更新学生活动时间: {student_sessions[session_id]['last_activity']}")
             
             # 存储音频流数据供教师端监控
@@ -2076,7 +2176,7 @@ def handle_video_frame(data):
 
         # 更新学生会话活动时间
         if session_id in student_sessions:
-            student_sessions[session_id]['last_activity'] = datetime.now().isoformat()
+            student_sessions[session_id]['last_activity'] = datetime.now(timezone.utc).isoformat()
             print(f"[视频转发] 更新学生活动时间: {student_sessions[session_id]['last_activity']}")
             
             # 存储视频流数据供教师端监控
@@ -2413,21 +2513,12 @@ if __name__ == '__main__':
     model_thread.start()
 
     # 启动定期清理任务
-    def periodic_cleanup():
-        """定期清理任务"""
-        import time
-        while True:
-            time.sleep(3600)  # 每小时执行一次
-            try:
-                from utils.cleanup_manager import CleanupManager
-                cleanup_mgr = CleanupManager()
-                deleted_sessions = cleanup_mgr.cleanup_old_sessions(days_to_keep=7, max_sessions=100)
-                deleted_temp = cleanup_mgr.cleanup_temp_files()
-                print(f"[定期清理] 执行完成 - {datetime.now()}")
-                print(f"[定期清理] 删除了 {deleted_sessions} 个会话文件, {deleted_temp} 个临时文件")
-            except Exception as e:
-                print(f"[定期清理] 失败: {e}")
-    
+    if SESSION_INACTIVITY_TIMEOUT > 0:
+        inactivity_thread = threading.Thread(target=monitor_inactive_sessions, daemon=True)
+        inactivity_thread.start()
+    else:
+        print('[超时清理] 会话超时清理已禁用 (AI_SESSION_INACTIVITY_TIMEOUT<=0)')
+
     # 启动定期清理线程
     cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
     cleanup_thread.start()

@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 // 使用全新设备连接页面
 import { DeviceCheckPage } from '../DeviceCheck';
+import type { DeviceCheckResults } from '../DeviceCheck/types';
 import { enhancedPublicApi } from '../../services/enhancedPublicApi';
 import type { Question } from '../../types';
 import { 
@@ -61,7 +62,7 @@ interface ExamStateManagerProps {
   setLoading: (loading: boolean) => void;
   onExamStart: () => void;
   // 向父组件上报设备连接结果（用于提交时附带）
-  onDeviceTestComplete?: (results: any) => void;
+  onDeviceTestComplete?: (results: DeviceCheckResults) => void;
 }
 
 const ExamStateManager: React.FC<ExamStateManagerProps> = ({
@@ -226,20 +227,19 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
   };
 
   // 设备测试结果
-  const [deviceTestResults, setDeviceTestResults] = useState({
-    cameraPermission: false,
-    microphonePermission: false,
-    testPassed: false
-  });
+  const [deviceTestResults, setDeviceTestResults] = useState<DeviceCheckResults | null>(null);
 
   // 设备测试完成处理
-  const handleDeviceTestComplete = (results: any) => {
-    // 设备测试完成后，保存结果并进入说明/考试步骤
+  const handleDeviceTestComplete = (results: DeviceCheckResults) => {
     setDeviceTestResults(results);
-    // 上报给父组件（用于提交时附带）
     onDeviceTestComplete?.(results);
-    message.success('设备连接完成');
-    
+
+    if (results.ai_opt_out) {
+      message.info('已选择跳过AI监控功能');
+    } else {
+      message.success('设备连接完成');
+    }
+
     // 如果有考试说明，进入说明页；否则直接开始考试
     if (exam?.description) {
       setCurrentStepWithHistory('description');
@@ -249,11 +249,11 @@ const ExamStateManager: React.FC<ExamStateManagerProps> = ({
   };
   
   // 跳过设备测试
-  const handleDeviceTestSkip = () => {
-    // 跳过设备连接：允许进入说明/考试，但给予提示
-    message.info('已跳过设备连接');
-    // 上报跳过信息（最小结果集）
-    onDeviceTestComplete?.({ cameraPermission: false, microphonePermission: false, testPassed: false, skipped: true });
+  const handleDeviceTestSkip = (results: DeviceCheckResults) => {
+    setDeviceTestResults(results);
+    onDeviceTestComplete?.(results);
+    message.info('已跳过AI监控功能，本次考试将不推送音视频流');
+
     if (exam?.description) {
       setCurrentStepWithHistory('description');
     } else {

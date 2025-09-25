@@ -8,7 +8,7 @@
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Any
 import requests
 
@@ -49,7 +49,7 @@ class SimpleStudentAPI:
                 'student_id': student_id,
                 'exam_id': exam_id,
                 'analysis_type': 'student_detection',
-                'start_time': datetime.now().isoformat(),
+                'start_time': datetime.now(timezone.utc).isoformat(),
                 'status': 'active'
             })
             

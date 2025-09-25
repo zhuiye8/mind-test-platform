@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Typography } from 'antd';
 
 interface Props {
+  aiEnabled: boolean;
   aiAvailable: boolean | null;
   aiConfigLoading: boolean;
   webrtcConnectionState: any;
@@ -10,20 +11,22 @@ interface Props {
 }
 
 // AI 监测状态面板
-const AIStatusPanel: React.FC<Props> = ({ aiAvailable, aiConfigLoading }) => {
-  // 简化展示：仅显示AI检测是否正常，隐藏情绪/心率等细节
-  const statusText = aiConfigLoading
+const AIStatusPanel: React.FC<Props> = ({ aiEnabled, aiAvailable, aiConfigLoading }) => {
+  const statusText = !aiEnabled
+    ? '未启用（已跳过）'
+    : aiConfigLoading
     ? '检测中…'
     : aiAvailable
     ? '正常'
-    : '未启用';
+    : '服务不可用';
 
-  const bg = aiConfigLoading
-    ? 'rgba(245, 158, 11, 0.12)'
+  const { bg, color } = !aiEnabled
+    ? { bg: 'rgba(156,163,175,0.2)', color: '#4b5563' }
+    : aiConfigLoading
+    ? { bg: 'rgba(245, 158, 11, 0.12)', color: '#92400e' }
     : aiAvailable
-    ? 'rgba(16, 185, 129, 0.12)'
-    : 'rgba(156, 163, 175, 0.2)';
-  const color = aiConfigLoading ? '#92400e' : aiAvailable ? '#065f46' : '#374151';
+    ? { bg: 'rgba(16, 185, 129, 0.12)', color: '#065f46' }
+    : { bg: 'rgba(248,113,113,0.15)', color: '#991b1b' };
 
   return (
     <Card

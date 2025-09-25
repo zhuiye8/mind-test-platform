@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
-import { Card, Row, Col, FloatButton, BackTop, Progress, Typography, Avatar, Spin } from 'antd';
+import { Card, Row, Col, FloatButton, BackTop, Progress, Typography, Avatar, Spin, Button } from 'antd';
 import {
   MenuOutlined,
   BulbOutlined,
@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { MediaStreamProvider } from '../contexts/MediaStreamContext';
 import type { Question } from '../types';
+import type { DeviceCheckResults } from '../components/DeviceCheck/types';
 import { useTimelineRecorder } from '../utils/timelineRecorder';
 import {
   ExamStateManager,
@@ -38,7 +39,8 @@ const ParticipantExamContent: React.FC = () => {
   const [participantInfo, setParticipantInfo] = useState<ParticipantInfo | null>(null);
 
   // 设备检测结果
-  const [deviceTestResults, setDeviceTestResults] = useState<any>(null);
+  const [deviceTestResults, setDeviceTestResults] = useState<DeviceCheckResults | null>(null);
+  const [aiEnabled, setAiEnabled] = useState(true);
 
   // 时间线记录器
   const timelineRecorder = useTimelineRecorder();
@@ -71,6 +73,7 @@ const ParticipantExamContent: React.FC = () => {
   // 推流初始化状态
   const [streamInitializing, setStreamInitializing] = useState(false);
   const [streamReady, setStreamReady] = useState(false);
+  const [timeoutInvalid, setTimeoutInvalid] = useState(false);
 
   // 考试流程 Hook
   const {
@@ -107,7 +110,7 @@ const ParticipantExamContent: React.FC = () => {
     heartRate,
     initAISession,
     disconnect,
-  } = useAIWebRTC(timelineRecorder, currentQuestionIndex);
+  } = useAIWebRTC(timelineRecorder, currentQuestionIndex, aiEnabled);
 
   const submissionManagerRef = useRef<ExamSubmissionManagerRef>(null);
   const questionTopRef = useRef<HTMLDivElement | null>(null);
@@ -115,7 +118,15 @@ const ParticipantExamContent: React.FC = () => {
   // 开始考试：初始化 AI 并启动流程
   const handleExamStart = useCallback(async () => {
     if (!exam || !participantInfo) return;
-    
+
+    if (!aiEnabled) {
+      startExam(exam.duration_minutes);
+      timelineRecorder.recordEvent('exam_started', { mode: 'no_ai' });
+      setStreamReady(true);
+      return;
+    }
+
+    let started = false;
     try {
       setStreamInitializing(true);
       // 初始化AI会话和WebRTC推流
@@ -123,19 +134,28 @@ const ParticipantExamContent: React.FC = () => {
       setStreamReady(true);
       // 推流就绪后启动考试计时器
       startExam(exam.duration_minutes);
+      started = true;
     } catch (error) {
       console.warn('AI session initialization failed, continuing in degraded mode:', error);
       // 即使推流失败，也允许用户答题（降级模式）
       startExam(exam.duration_minutes);
+      started = true;
     } finally {
       setStreamInitializing(false);
+      if (started) {
+        timelineRecorder.recordEvent('exam_started', { mode: 'with_ai' });
+      }
     }
-  }, [exam, participantInfo, examUuid, initAISession, startExam]);
+  }, [aiEnabled, exam, participantInfo, examUuid, initAISession, startExam, timelineRecorder]);
 
   // 设备检测完成
-  const handleDeviceTestComplete = useCallback((results: any) => {
+  const handleDeviceTestComplete = useCallback((results: DeviceCheckResults) => {
     setDeviceTestResults(results);
-    timelineRecorder.recordEvent('device_test_completed', { results });
+    setAiEnabled(!results?.ai_opt_out);
+    timelineRecorder.recordEvent('device_test_completed', {
+      results,
+      ai_enabled: !results?.ai_opt_out,
+    });
   }, [timelineRecorder]);
 
   // 提交成功
@@ -153,8 +173,23 @@ const ParticipantExamContent: React.FC = () => {
       setCurrentStep('completed');
       setParticipantInfo(null);
       setDeviceTestResults(null);
+      setTimeoutInvalid(false);
+      setAiEnabled(true);
     }
   }, [answers, timelineRecorder, disconnect, stopTimer, setParticipantInfo]);
+
+  const handleTimeoutInvalid = useCallback((details?: { validationErrors: string[] }) => {
+    stopTimer();
+    setTimeoutInvalid(true);
+    timelineRecorder.recordEvent('exam_timeout_invalidated', {
+      validation_errors: details?.validationErrors,
+      answered_count: Object.keys(answers).length,
+      total_questions: visibleQuestions.length,
+    });
+    disconnect().catch(error => {
+      console.warn('Error disconnecting after timeout invalidation:', error);
+    });
+  }, [answers, visibleQuestions.length, timelineRecorder, disconnect, stopTimer]);
 
   // 页面关闭/刷新提醒（仅在考试进行中）
   useEffect(() => {
@@ -239,6 +274,22 @@ const ParticipantExamContent: React.FC = () => {
     return `${mm}:${ss}`;
   };
 
+  const aiStatusLabel = !aiEnabled
+    ? 'AI状态: 已跳过'
+    : aiConfigLoading
+    ? 'AI状态: 检测中…'
+    : aiAvailable
+    ? 'AI状态: 可用'
+    : 'AI状态: 服务异常';
+
+  const aiStatusVisual = !aiEnabled
+    ? { bg: 'rgba(156,163,175,0.2)', color: '#4b5563' }
+    : aiConfigLoading
+    ? { bg: 'rgba(245, 158, 11, 0.12)', color: '#92400e' }
+    : aiAvailable
+    ? { bg: 'rgba(16,185,129,0.12)', color: '#065f46' }
+    : { bg: 'rgba(248,113,113,0.15)', color: '#991b1b' };
+
   return (
     <div style={{ minHeight: '100vh', background: gradientThemes.exam }}>
       {examUuid && participantInfo && (
@@ -252,6 +303,7 @@ const ParticipantExamContent: React.FC = () => {
           deviceTestResults={deviceTestResults}
           timelineData={timelineRecorder.getTimeline()}
           onSubmissionSuccess={handleSubmissionSuccess}
+          onTimeoutInvalid={handleTimeoutInvalid}
         />
       )}
 
@@ -337,13 +389,13 @@ const ParticipantExamContent: React.FC = () => {
               style={{
                 padding: '2px 8px',
                 borderRadius: 999,
-                background: aiAvailable ? 'rgba(16,185,129,0.12)' : 'rgba(156,163,175,0.2)',
-                color: aiAvailable ? '#065f46' : '#374151',
+                background: aiStatusVisual.bg,
+                color: aiStatusVisual.color,
                 fontSize: 12,
                 fontWeight: 600,
               }}
             >
-              {aiConfigLoading ? 'AI状态: 检测中…' : aiAvailable ? 'AI状态: 可用' : 'AI状态: 未启用'}
+              {aiStatusLabel}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ minWidth: 120 }}>
@@ -426,6 +478,7 @@ const ParticipantExamContent: React.FC = () => {
                 filter: streamInitializing ? 'grayscale(0.3)' : 'none', // 推流初始化时显示视觉提示
               }}>
                 <AIStatusPanel
+                  aiEnabled={aiEnabled}
                   aiAvailable={aiAvailable}
                   aiConfigLoading={aiConfigLoading}
                   webrtcConnectionState={webrtcConnectionState}
@@ -464,6 +517,43 @@ const ParticipantExamContent: React.FC = () => {
 
       {/* 回到顶部 */}
       <BackTop />
+
+      {timeoutInvalid && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(17, 24, 39, 0.78)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}
+        >
+          <Card
+            style={{
+              maxWidth: 420,
+              width: '100%',
+              textAlign: 'center',
+              borderRadius: 16,
+            }}
+          >
+            <Typography.Title level={3} style={{ marginBottom: 12 }}>
+              本次考试已作废
+            </Typography.Title>
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
+              因存在未完成的必答题，本次作答记录无效。请联系监考老师重新预约考试。
+            </Typography.Paragraph>
+            <Button type="primary" block size="large" onClick={() => window.location.reload()}>
+              重新进入考试
+            </Button>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

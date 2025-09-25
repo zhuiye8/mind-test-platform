@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Modal, Button, Space, Typography, Divider, Spin, Card, Row, Col, Statistic, App } from 'antd';
+import { Modal, Button, Space, Typography, Divider, Spin, Card, Row, Col, Statistic, App, Alert } from 'antd';
 import { 
   DownloadOutlined, 
   PrinterOutlined, 
@@ -34,6 +34,8 @@ export interface AIReportViewerProps {
   reportFile?: string;
   examResultId?: string; // 添加考试结果ID用于新功能
   onReportUpdate?: (newReport: string) => void; // 报告更新回调
+  aiDataAvailable?: boolean;
+  warnings?: string[];
 }
 
 const AIReportViewer: React.FC<AIReportViewerProps> = ({
@@ -44,7 +46,9 @@ const AIReportViewer: React.FC<AIReportViewerProps> = ({
   examTitle = '心理测试',
   reportFile,
   examResultId,
-  onReportUpdate
+  onReportUpdate,
+  aiDataAvailable,
+  warnings,
 }) => {
   const { message } = App.useApp();
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -355,6 +359,34 @@ const AIReportViewer: React.FC<AIReportViewerProps> = ({
         overflow: 'auto',
         background: '#ffffff'
       }}>
+        {aiDataAvailable === false && (
+          <Alert
+            type="warning"
+            showIcon
+            message="未采集到AI情绪/心率数据"
+            description="报告基于学生的作答内容和行为数据生成，请结合实际情况进行评估。"
+            style={{ marginBottom: '24px' }}
+          />
+        )}
+
+        {warnings && warnings.filter(w => w !== 'AI_DATA_UNAVAILABLE').length > 0 && (
+          <Alert
+            type="info"
+            showIcon
+            message="生成提示"
+            description={
+              <ul style={{ margin: '8px 0 0 16px', padding: 0 }}>
+                {warnings
+                  .filter(w => w !== 'AI_DATA_UNAVAILABLE')
+                  .map((warning, index) => (
+                    <li key={index}>{warning}</li>
+                  ))}
+              </ul>
+            }
+            style={{ marginBottom: '24px' }}
+          />
+        )}
+
         <div style={{
           background: 'linear-gradient(135deg, #fff7e6 0%, #fff2e8 100%)',
           border: '1px solid #ffd591',

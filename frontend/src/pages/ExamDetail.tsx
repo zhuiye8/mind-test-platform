@@ -34,6 +34,8 @@ const ExamDetail: React.FC = () => {
     participantName: string;
     reportFile?: string;
     examResultId?: string;
+    aiDataAvailable?: boolean;
+    warnings?: string[];
   } | null>(null);
 
   useEffect(() => {
@@ -344,6 +346,13 @@ const ExamDetail: React.FC = () => {
           return;
         }
 
+        const { aiDataAvailable, warnings } = response.data;
+        if (warnings?.includes('AI_DATA_UNAVAILABLE')) {
+          message.warning('未采集到AI情绪/心率数据，本次报告基于作答内容生成。');
+        } else if (aiDataAvailable === false) {
+          message.warning('本次报告未使用AI情绪/心率数据。');
+        }
+
         message.success('AI分析报告生成成功！', 3);
         
         // 设置当前报告数据并显示专业查看器
@@ -351,7 +360,9 @@ const ExamDetail: React.FC = () => {
           report: response.data.report,
           participantName: examResult.participant_name,
           reportFile: response.data.reportFile,
-          examResultId: examResult.id
+          examResultId: examResult.id,
+          aiDataAvailable,
+          warnings,
         });
         setAiReportVisible(true);
 
@@ -684,6 +695,8 @@ const ExamDetail: React.FC = () => {
           examTitle={exam?.title}
           reportFile={currentAiReport.reportFile}
           examResultId={currentAiReport.examResultId}
+          aiDataAvailable={currentAiReport.aiDataAvailable}
+          warnings={currentAiReport.warnings}
           onReportUpdate={(newReport: string) => {
             if (currentAiReport) {
               setCurrentAiReport({

@@ -14,10 +14,11 @@ export interface DeviceCheckResults {
   // 运行时信息
   constraints_used?: Record<string, any>;
   skipped?: boolean;
+  ai_opt_out?: boolean;
+  user_confirmed?: boolean;
 }
 
 export interface DeviceCheckPageProps {
   onComplete: (results: DeviceCheckResults) => void;
-  onSkip?: () => void;
+  onSkip?: (results: DeviceCheckResults) => void;
 }
-

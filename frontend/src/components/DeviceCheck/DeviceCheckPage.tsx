@@ -34,6 +34,8 @@ const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip })
       selected_microphone_id: dc.selectedMicId,
       selected_microphone_label: getLabel(dc.microphones, dc.selectedMicId),
       constraints_used: {},
+      skipped: false,
+      ai_opt_out: false,
       user_confirmed: true,
     };
     
@@ -45,6 +47,23 @@ const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip })
     });
     
     onComplete(results);
+  };
+
+  const handleSkip = () => {
+    // 明确标记跳过状态，便于后续流程禁用 AI 监控
+    const skippedResults: DeviceCheckResults = {
+      camera_ok: false,
+      microphone_ok: false,
+      constraints_used: {},
+      skipped: true,
+      ai_opt_out: true,
+      user_confirmed: false,
+    };
+
+    // 确保未持有多余的媒体流
+    dc.stop();
+    mediaStream.clearStreams();
+    onSkip?.(skippedResults);
   };
 
   // 页面卸载时不再清理设备流资源，流将保持到Context中
@@ -120,7 +139,16 @@ const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip })
             >
               {(dc.cameraOk || dc.micOk) ? '确认连接正常，保持连接' : '设备异常但仍要继续'}
             </Button>
-            {onSkip && <Button size="large" icon={<StepForwardOutlined />} onClick={() => { onSkip(); }} style={{ borderRadius: 12, padding: '8px 20px', height: 'auto' }}>跳过连接</Button>}
+            {onSkip && (
+              <Button
+                size="large"
+                icon={<StepForwardOutlined />}
+                onClick={handleSkip}
+                style={{ borderRadius: 12, padding: '8px 20px', height: 'auto' }}
+              >
+                跳过连接
+              </Button>
+            )}
           </div>
         </Card>
       </div>
@@ -129,4 +157,3 @@ const DeviceCheckPage: React.FC<DeviceCheckPageProps> = ({ onComplete, onSkip })
 };
 
 export default DeviceCheckPage;
-

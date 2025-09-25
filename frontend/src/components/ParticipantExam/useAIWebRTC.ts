@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { enhancedPublicApi } from '../../services/enhancedPublicApi'; // 增强版公开API，带重试与降级
 import webrtcPublisher from '../../services/webrtcPublisher';
 import { webrtcApi } from '../../services/api/webrtcApi';
@@ -9,7 +9,8 @@ import type { ParticipantInfo } from './ExamStateManager';
 // AI 与 WebRTC 管理 Hook
 export const useAIWebRTC = (
   timelineRecorder: ReturnType<typeof useTimelineRecorder>,
-  currentQuestionIndex: number
+  currentQuestionIndex: number,
+  aiEnabled: boolean
 ) => {
   const mediaStream = useMediaStream();
   
@@ -22,6 +23,14 @@ export const useAIWebRTC = (
   const [webrtcConnectionState, setWebrtcConnectionState] = useState<any>(null);
   const [emotionAnalysis, setEmotionAnalysis] = useState<any>(null);
   const [heartRate, setHeartRate] = useState<number>(0);
+  const aiEnabledRef = useRef(aiEnabled);
+
+  useEffect(() => {
+    aiEnabledRef.current = aiEnabled;
+    if (!aiEnabled) {
+      setWebrtcConnectionState({ status: 'disabled' });
+    }
+  }, [aiEnabled]);
 
   // 预取 AI 服务配置
   useEffect(() => {
@@ -88,6 +97,12 @@ export const useAIWebRTC = (
     examUuid: string,
     participantInfo: ParticipantInfo
   ) => {
+    if (!aiEnabledRef.current) {
+      console.log('[AI] Monitoring disabled, skip session initialization');
+      handleWebRTCConnectionChange({ status: 'disabled' });
+      return;
+    }
+
     try {
       // 记录用于后续停止
       (window as any).__lastExamUuid = examUuid;

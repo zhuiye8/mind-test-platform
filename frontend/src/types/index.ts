@@ -182,7 +182,8 @@ export interface ExamResult {
   started_at: string | null;
   submitted_at: string;
   score?: number;
-  
+  ai_session_id?: string | null;
+
   // 新增量表统计字段
   total_questions?: number;
   answered_questions?: number;

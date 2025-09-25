@@ -56,6 +56,8 @@ export const generateAIReport = async (req: Request, res: Response): Promise<voi
         report: result.report,
         reportFile: result.reportFile,
         cached: result.cached,
+        aiDataAvailable: result.aiDataAvailable ?? false,
+        warnings: result.warnings,
         message: result.cached ? 'AI分析报告获取成功（缓存）' : 'AI分析报告生成成功',
       });
     } else {

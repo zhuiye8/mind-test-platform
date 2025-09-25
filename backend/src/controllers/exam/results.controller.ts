@@ -134,6 +134,7 @@ export const getExamResults = async (req: Request, res: Response): Promise<void>
         started_at: startedAt,
         submitted_at: submittedAt,
         total_time_seconds: totalTimeSeconds,
+        ai_session_id: result.aiSessionId,
       };
     });
 

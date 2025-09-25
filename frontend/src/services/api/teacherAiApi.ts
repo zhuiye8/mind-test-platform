@@ -11,6 +11,8 @@ export const teacherAiApi = {
     report: string;
     reportFile?: string;
     message: string;
+    aiDataAvailable?: boolean;
+    warnings?: string[];
   }>> => {
     return api.post(`/teacher/ai/exam-results/${examResultId}/generate-report`);
   },
