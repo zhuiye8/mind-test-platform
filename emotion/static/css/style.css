@@ -943,12 +943,12 @@ body {
     right: 8px;
 }
 
-/* 音频可视化 */
+/* 音频可视化 - 已隐藏 */
 .audio-visualizer {
     background: rgba(0, 0, 0, 0.5);
     border-radius: 8px;
     padding: 10px;
-    display: flex;
+    display: none; /* 隐藏音频可视化 */
     flex-direction: column;
     justify-content: center;
     align-items: center;
@@ -962,6 +962,7 @@ body {
     background: #1a1a1a;
     border-radius: 6px;
     margin-bottom: 6px;
+    display: none; /* 隐藏音频画布 */
 }
 
 .audio-info {
@@ -973,15 +974,15 @@ body {
     gap: 8px;
 }
 
-/* 音频状态容器 */
+/* 音频状态容器 - 已隐藏 */
 .audio-status-container {
-    display: flex;
+    display: none; /* 隐藏音频状态容器 */
     align-items: center;
     gap: 10px;
     margin-top: 5px;
 }
 
-/* 音频状态指示器 */
+/* 音频状态指示器 - 已隐藏 */
 .audio-status-indicator {
     width: 12px;
     height: 12px;
@@ -990,9 +991,10 @@ body {
     box-shadow: 0 0 8px rgba(255, 0, 0, 0.6);
     transition: all 0.3s ease;
     flex-shrink: 0;
+    display: none; /* 隐藏音频状态指示器 */
 }
 
-/* 音频级别条 */
+/* 音频级别条 - 已隐藏 */
 .audio-level {
     width: 80px;
     height: 8px;
@@ -1001,6 +1003,7 @@ body {
     overflow: hidden;
     position: relative;
     border: 1px solid rgba(0, 255, 255, 0.3);
+    display: none; /* 隐藏音频级别条 */
 }
 
 .audio-level::after {

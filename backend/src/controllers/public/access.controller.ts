@@ -28,7 +28,7 @@ export const getPublicExam = async (req: Request, res: Response): Promise<void> 
         shuffleQuestions: true,
         allowMultipleSubmissions: true,
         status: true,
-        questionIdsSnapshot: true,
+        questionSnapshot: true,
         paper: {
           select: {
             description: true,
@@ -73,7 +73,8 @@ export const getPublicExam = async (req: Request, res: Response): Promise<void> 
     }
 
     // 获取题目详情
-    const questionIds = exam.questionIdsSnapshot as string[];
+    const questionSnapshot = exam.questionSnapshot as any;
+    const questionIds = questionSnapshot?.questions?.map((q: any) => q.id) || [];
     const questions = await prisma.question.findMany({
       where: {
         id: { in: questionIds },
@@ -81,12 +82,12 @@ export const getPublicExam = async (req: Request, res: Response): Promise<void> 
     });
 
     // 按快照中的顺序排序题目
-    const orderedQuestions = questionIds.map(id => 
+    const orderedQuestions = questionIds.map((id: string) => 
       questions.find(q => q.id === id)
     ).filter(Boolean);
 
     // 格式化题目数据
-    let formattedQuestions = orderedQuestions.map(question => ({
+    let formattedQuestions = orderedQuestions.map((question: any) => ({
       id: question!.id,
       question_order: question!.questionOrder,
       title: question!.title,
@@ -134,7 +135,7 @@ export const verifyExamPassword = async (req: Request, res: Response): Promise<v
         shuffleQuestions: true,
         allowMultipleSubmissions: true,
         status: true,
-        questionIdsSnapshot: true,
+        questionSnapshot: true,
         paper: {
           select: {
             description: true,
@@ -177,7 +178,8 @@ export const verifyExamPassword = async (req: Request, res: Response): Promise<v
     }
 
     // 密码验证成功，返回完整考试信息和题目
-    const questionIds = exam.questionIdsSnapshot as string[];
+    const questionSnapshot = exam.questionSnapshot as any;
+    const questionIds = questionSnapshot?.questions?.map((q: any) => q.id) || [];
     const questions = await prisma.question.findMany({
       where: {
         id: { in: questionIds },
@@ -185,12 +187,12 @@ export const verifyExamPassword = async (req: Request, res: Response): Promise<v
     });
 
     // 按快照中的顺序排序题目
-    const orderedQuestions = questionIds.map(id => 
+    const orderedQuestions = questionIds.map((id: string) => 
       questions.find(q => q.id === id)
     ).filter(Boolean);
 
     // 格式化题目数据
-    let formattedQuestions = orderedQuestions.map(question => ({
+    let formattedQuestions = orderedQuestions.map((question: any) => ({
       id: question!.id,
       question_order: question!.questionOrder,
       title: question!.title,

@@ -464,26 +464,24 @@ export const batchDeleteQuestions = async (req: Request, res: Response): Promise
   }
 };
 
-// 批量导入题目（从JSON数据）
+// 批量导入题目（文件上传版本）
 export const batchImportQuestions = async (req: Request, res: Response): Promise<void> => {
   try {
     const { paperId } = req.params;
-    const { questions, import_mode = 'append' } = req.body; // append: 追加, replace: 替换
+    const { mode = 'append', preview_only = 'false' } = req.body;
     const teacherId = req.teacher?.id;
+    const file = req.file;
 
-    // 参数验证
-    if (!questions || !Array.isArray(questions) || questions.length === 0) {
-      sendError(res, '导入的题目列表不能为空', 400);
-      return;
-    }
+    console.log('📋 批量导入请求:', { paperId, mode, preview_only, hasFile: !!file });
 
-    if (questions.length > 200) {
-      sendError(res, '单次最多导入200道题目', 400);
-      return;
-    }
-
+    // 基础验证
     if (!teacherId) {
       sendError(res, '认证信息无效', 401);
+      return;
+    }
+
+    if (!file) {
+      sendError(res, '请上传文件', 400);
       return;
     }
 
@@ -495,7 +493,18 @@ export const batchImportQuestions = async (req: Request, res: Response): Promise
       },
       include: {
         questions: {
-          select: { id: true },
+          where: { isDeleted: false },
+          select: {
+            id: true,
+            questionOrder: true,
+            title: true,
+            questionType: true,
+            options: true,
+            isRequired: true,
+            isScored: true,
+            scoreValue: true,
+            displayCondition: true,
+          },
         },
       },
     });
@@ -505,184 +514,396 @@ export const batchImportQuestions = async (req: Request, res: Response): Promise
       return;
     }
 
-    // 如果是替换模式，需要先检查是否有考试使用该试卷
-    if (import_mode === 'replace') {
-      const relatedExams = await prisma.exam.count({
-        where: { paperId },
-      });
+    // 解析文件内容
+    let questionsData: any[];
+    try {
+      const fileContent = file.buffer.toString('utf8');
+      
+      if (file.mimetype === 'application/json' || file.originalname.endsWith('.json')) {
+        // 解析 JSON
+        const jsonData = JSON.parse(fileContent);
+        questionsData = Array.isArray(jsonData) ? jsonData : [jsonData];
+      } else if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+        // 解析 CSV
+        const lines = fileContent.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          sendError(res, 'CSV 文件格式错误：至少需要标题行和一行数据', 400);
+          return;
+        }
 
-      if (relatedExams > 0) {
-        sendError(res, '该试卷已被考试使用，不能执行替换导入', 400);
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        questionsData = lines.slice(1).map(line => {
+          const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
+          const item: any = {};
+          headers.forEach((header, index) => {
+            item[header] = values[index] || '';
+          });
+          return item;
+        });
+      } else {
+        sendError(res, '不支持的文件格式', 400);
         return;
       }
+    } catch (error) {
+      console.error('文件解析错误:', error);
+      sendError(res, '文件格式错误，无法解析', 400);
+      return;
     }
 
     // 数据验证和预处理
     const validationErrors: string[] = [];
-    const processedQuestions: any[] = [];
-    let startOrder = 1;
+    type ProcessedQuestion = {
+      data: {
+        paperId: string;
+        questionOrder: number;
+        title: string;
+        options: Record<string, any>;
+        questionType: string;
+        displayCondition: any;
+        isRequired: boolean;
+        isScored: boolean;
+        scoreValue: number;
+      };
+      preview: {
+        paper_id: string;
+        question_order: number;
+        title: string;
+        options: Record<string, any>;
+        question_type: string;
+        display_condition: any;
+        is_required: boolean;
+        is_scored: boolean;
+        score_value: number;
+      };
+      signature: string;
+      existingId: string | null;
+      operation: 'create' | 'update';
+    };
+    const processedQuestions: ProcessedQuestion[] = [];
 
-    // 如果是追加模式，获取当前最大排序号
-    if (import_mode === 'append') {
-      const maxOrder = await prisma.question.aggregate({
-        where: { paperId },
-        _max: { questionOrder: true },
-      });
-      startOrder = (maxOrder._max.questionOrder || 0) + 1;
+    const normalizeOptions = (rawOptions: any): Record<string, any> => {
+      if (!rawOptions) return {};
+      if (Array.isArray(rawOptions)) {
+        const result: Record<string, any> = {};
+        rawOptions.forEach((option: any, index) => {
+          if (option === undefined || option === null) return;
+          const key = String.fromCharCode(65 + index);
+          if (typeof option === 'object') {
+            result[key] = option.label ?? option.text ?? option.value ?? '';
+          } else {
+            result[key] = option;
+          }
+        });
+        return result;
+      }
+      if (typeof rawOptions === 'object') {
+        const cloned: Record<string, any> = {};
+        Object.entries(rawOptions).forEach(([key, value]) => {
+          if (value === undefined || value === null) return;
+          if (typeof value === 'object' && value !== null) {
+            const val: any = value as any;
+            cloned[key] = val.label ?? val.text ?? val.value ?? val;
+          } else {
+            cloned[key] = value as any;
+          }
+        });
+        return cloned;
+      }
+      return {};
+    };
+
+    const buildSignature = (
+      title: string,
+      questionType: string,
+      options: Record<string, any>,
+      isRequired: boolean,
+      isScored: boolean,
+      scoreValue: number,
+    ): string => {
+      const normalizedOptions = Object.entries(options || {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key}:${typeof value === 'object' ? JSON.stringify(value) : value}`);
+      return [
+        title.trim(),
+        questionType,
+        isRequired ? '1' : '0',
+        isScored ? '1' : '0',
+        Number(scoreValue) || 0,
+        normalizedOptions.join(';')
+      ].join('|');
+    };
+
+    const existingSignatures = new Map<string, { id: string; questionOrder: number }[]>();
+    for (const existing of paper.questions) {
+      const normalizedOptions = normalizeOptions(existing.options as any);
+      const signature = buildSignature(
+        existing.title,
+        existing.questionType,
+        normalizedOptions,
+        existing.isRequired,
+        existing.isScored,
+        existing.scoreValue ?? 0,
+      );
+      const list = existingSignatures.get(signature) ?? [];
+      list.push({ id: existing.id, questionOrder: existing.questionOrder });
+      existingSignatures.set(signature, list);
     }
 
-    // 验证导入数据格式
-    for (let i = 0; i < questions.length; i++) {
-      const questionData = questions[i];
-      
-      // 支持多种导入格式
-      const {
-        title,
-        question_title,
-        content,
-        options,
-        choices,
-        question_type = 'single_choice',
-        type,
-        display_condition,
-        condition,
-        order,
-        question_order,
-      } = questionData;
+    const existingQuestionOrders = paper.questions.map((q: any) => q.questionOrder);
+    let nextOrder = 1;
+    if (mode !== 'replace' && existingQuestionOrders.length > 0) {
+      nextOrder = Math.max(...existingQuestionOrders) + 1;
+    }
+    const consumeNextOrder = () => nextOrder++;
 
-      // 标题字段兼容性处理
-      const questionTitle = title || question_title || content;
-      if (!questionTitle || typeof questionTitle !== 'string' || questionTitle.trim().length === 0) {
+    // 处理每个题目
+    for (let i = 0; i < questionsData.length; i++) {
+      const questionData = questionsData[i];
+      
+      // 支持多种字段名称（兼容性处理）
+      const title = questionData.title || questionData.question_title || questionData.content || '';
+      const questionType = questionData.question_type || questionData.type || 'single_choice';
+      const options = questionData.options || questionData.choices || [];
+      const displayCondition = questionData.display_condition || questionData.condition || null;
+      const questionOrderInput = questionData.question_order ?? questionData.order;
+      const isRequired = questionData.is_required !== undefined ? questionData.is_required : true;
+      const isScored = questionData.is_scored !== undefined ? questionData.is_scored : false;
+      const scoreValue = questionData.score_value || 1;
+
+      // 验证标题
+      if (!title || typeof title !== 'string' || title.trim().length === 0) {
         validationErrors.push(`第${i + 1}题：标题不能为空`);
         continue;
       }
 
-      if (questionTitle.length > 200) {
-        validationErrors.push(`第${i + 1}题：标题不能超过200个字符`);
+      if (title.length > 500) {
+        validationErrors.push(`第${i + 1}题：标题不能超过500个字符`);
         continue;
       }
 
-      // 题目类型兼容性处理
-      const questionType = question_type || type || 'single_choice';
-      if (!['single_choice', 'multiple_choice', 'text'].includes(questionType)) {
+      // 验证题目类型
+      if (!['single_choice', 'multiple_choice', 'text_input'].includes(questionType)) {
         validationErrors.push(`第${i + 1}题：无效的题目类型 "${questionType}"`);
         continue;
       }
 
-      // 选项处理
-      let processedOptions = {};
+      // 处理选项
+      let processedOptions: Record<string, any> = {};
       
-      if (questionType !== 'text') {
-        const rawOptions = options || choices || {};
-        
-        // 支持不同的选项格式
-        if (Array.isArray(rawOptions)) {
-          // 数组格式: ["选项1", "选项2", ...]
-          rawOptions.forEach((option, index) => {
-            const key = String.fromCharCode(65 + index); // A, B, C, D...
-            (processedOptions as Record<string, string>)[key] = String(option);
+      if (questionType !== 'text_input') {
+        // 支持数组格式选项
+        if (Array.isArray(options)) {
+          options.forEach((option, index) => {
+            if (option && option.toString().trim()) {
+              const key = String.fromCharCode(65 + index); // A, B, C, D...
+              if (typeof option === 'object' && option.label) {
+                processedOptions[key] = option.label;
+              } else {
+                processedOptions[key] = option.toString();
+              }
+            }
           });
-        } else if (typeof rawOptions === 'object' && rawOptions !== null) {
-          // 对象格式: {A: "选项1", B: "选项2", ...} 或 {1: "选项1", 2: "选项2", ...}
-          const entries = Object.entries(rawOptions);
-          entries.forEach(([key, value]) => {
-            // 如果键是数字，转换为字母
-            const optionKey = /^\d+$/.test(key) ? String.fromCharCode(64 + parseInt(key)) : key;
-            (processedOptions as Record<string, string>)[optionKey] = String(value);
-          });
-        } else {
-          validationErrors.push(`第${i + 1}题：选项格式不正确`);
-          continue;
+        } else if (typeof options === 'object' && options !== null) {
+          // 支持对象格式选项
+          processedOptions = { ...options };
         }
 
         // 验证选项数量
-        const validOptionsCount = Object.values(processedOptions).filter(v => 
-          typeof v === 'string' && v.trim()
-        ).length;
-        
+        const validOptionsCount = Object.keys(processedOptions).length;
         if (validOptionsCount < 2) {
-          validationErrors.push(`第${i + 1}题：至少需要设置2个选项`);
+          validationErrors.push(`第${i + 1}题：${questionType === 'single_choice' ? '单选题' : '多选题'}至少需要2个选项`);
           continue;
         }
       }
 
-      // 条件逻辑处理
-      const displayCondition = display_condition || condition || null;
-      
-      // 排序处理
-      const questionOrder = order || question_order || startOrder + i;
+      const normalizedOptions = processedOptions;
+      const signature = buildSignature(
+        title,
+        questionType,
+        normalizedOptions,
+        Boolean(isRequired),
+        Boolean(isScored),
+        Number(scoreValue) || 1,
+      );
 
-      processedQuestions.push({
+      let existingMatch: { id: string; questionOrder: number } | undefined;
+      if (mode === 'merge') {
+        const candidates = existingSignatures.get(signature);
+        if (candidates && candidates.length > 0) {
+          existingMatch = candidates.shift();
+          if (candidates.length === 0) {
+            existingSignatures.delete(signature);
+          }
+        }
+      }
+
+      let targetOrder: number;
+      if (mode === 'replace') {
+        targetOrder = typeof questionOrderInput === 'number' && Number.isFinite(questionOrderInput)
+          ? questionOrderInput
+          : i + 1;
+      } else if (existingMatch) {
+        targetOrder = existingMatch.questionOrder;
+      } else {
+        targetOrder = consumeNextOrder();
+      }
+
+      const questionPayload = {
         paperId,
-        questionOrder: typeof questionOrder === 'number' ? questionOrder : startOrder + i,
-        title: questionTitle.trim(),
-        options: processedOptions,
+        questionOrder: targetOrder,
+        title: title.trim(),
+        options: normalizedOptions,
         questionType,
         displayCondition: displayCondition as any,
+        isRequired: Boolean(isRequired),
+        isScored: Boolean(isScored),
+        scoreValue: Number(scoreValue) || 1,
+      };
+
+      processedQuestions.push({
+        data: questionPayload,
+        preview: {
+          paper_id: paperId,
+          question_order: targetOrder,
+          title: questionPayload.title,
+          options: questionPayload.options,
+          question_type: questionPayload.questionType,
+          display_condition: questionPayload.displayCondition,
+          is_required: questionPayload.isRequired,
+          is_scored: questionPayload.isScored,
+          score_value: questionPayload.scoreValue,
+        },
+        signature,
+        existingId: existingMatch?.id ?? null,
+        operation: existingMatch ? 'update' : 'create',
       });
     }
 
-    // 如果有验证错误，返回错误信息
-    if (validationErrors.length > 0) {
-      sendError(res, `数据验证失败：${validationErrors.join('; ')}`, 400);
+    // 验证结果
+    if (questionsData.length === 0) {
+      sendError(res, '文件中没有找到有效的题目数据', 400);
       return;
     }
 
-    // 执行导入操作（事务处理）
+    if (validationErrors.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: `数据验证失败`,
+        data: {
+          success: false,
+          imported_count: 0,
+          skipped_count: 0,
+          error_count: validationErrors.length,
+          errors: validationErrors.slice(0, 10), // 只返回前10个错误
+        }
+      });
+      return;
+    }
+
+    // 如果是预览模式，返回预览数据
+    if (preview_only === 'true') {
+      sendSuccess(res, {
+        success: true,
+        message: `预览成功，将要导入 ${processedQuestions.length} 个题目`,
+        imported_count: 0,
+        skipped_count: 0,
+        error_count: 0,
+        errors: [],
+        preview_data: processedQuestions.slice(0, 50).map(item => item.preview),
+      });
+      return;
+    }
+
+    // 执行实际导入
     const result = await prisma.$transaction(async (tx) => {
       let deletedCount = 0;
+      let createdCount = 0;
+      let updatedCount = 0;
       
-      // 如果是替换模式，先删除现有题目
-      if (import_mode === 'replace' && paper.questions.length > 0) {
-        const deleteResult = await tx.question.deleteMany({
-          where: { paperId },
+      // 替换模式：删除现有题目
+      if (mode === 'replace' && paper.questions.length > 0) {
+        // 软删除现有题目
+        await tx.question.updateMany({
+          where: { paperId, isDeleted: false },
+          data: { 
+            isDeleted: true,
+            deletedAt: new Date(),
+          },
         });
-        deletedCount = deleteResult.count;
+        deletedCount = paper.questions.length;
       }
 
-      // 批量创建新题目
-      const createdQuestions = [];
-      for (const questionData of processedQuestions) {
-        const question = await tx.question.create({
-          data: questionData,
+      const creates = processedQuestions.filter(item => item.operation === 'create');
+      const updates = processedQuestions.filter(item => item.operation === 'update' && item.existingId);
+
+      for (const createItem of creates) {
+        await tx.question.create({
+          data: createItem.data,
         });
-        createdQuestions.push(question);
+        createdCount += 1;
+      }
+
+      for (const updateItem of updates) {
+        await tx.question.update({
+          where: { id: updateItem.existingId! },
+          data: {
+            title: updateItem.data.title,
+            options: updateItem.data.options,
+            questionType: updateItem.data.questionType,
+            displayCondition: updateItem.data.displayCondition,
+            isRequired: updateItem.data.isRequired,
+            isScored: updateItem.data.isScored,
+            scoreValue: updateItem.data.scoreValue,
+          },
+        });
+        updatedCount += 1;
       }
 
       return {
         deleted_count: deletedCount,
-        created_questions: createdQuestions,
+        created_count: createdCount,
+        updated_count: updatedCount,
       };
     });
 
-    // 格式化返回结果
-    const formattedQuestions = result.created_questions.map(question => ({
-      id: question.id,
-      question_order: question.questionOrder,
-      title: question.title,
-      options: question.options,
-      question_type: question.questionType,
-      display_condition: question.displayCondition,
-      created_at: question.createdAt,
-      updated_at: question.updatedAt,
-    }));
+    // 记录导入日志（如果需要）
+    console.log(`📋 导入日志: ${paper.title} - ${mode}模式 - 新增${result.created_count}道，更新${result.updated_count}道题目 - 文件: ${file.originalname}`);
 
-    const responseMessage = import_mode === 'replace' 
-      ? `成功替换导入${result.created_questions.length}道题目（删除${result.deleted_count}道旧题目）`
-      : `成功导入${result.created_questions.length}道题目`;
+    // 返回成功结果
+    let responseMessage = '';
+    if (mode === 'replace') {
+      responseMessage = `成功替换导入${result.created_count}道题目${result.deleted_count > 0 ? `（替换了${result.deleted_count}道旧题目）` : ''}`;
+    } else if (mode === 'merge') {
+      responseMessage = `合并完成：新增${result.created_count}道，更新${result.updated_count}道题目`;
+    } else {
+      responseMessage = `成功追加${result.created_count}道题目`;
+    }
 
     sendSuccess(res, {
+      success: true,
       message: responseMessage,
-      import_mode,
-      deleted_count: result.deleted_count,
-      created_count: result.created_questions.length,
-      questions: formattedQuestions,
+      imported_count: result.created_count + result.updated_count,
+      created_count: result.created_count,
+      updated_count: result.updated_count,
+      skipped_count: 0,
+      error_count: 0,
+      errors: [],
     }, 201);
 
-    console.log(`✅ 批量导入题目成功: ${paper.title} - ${import_mode}模式 - ${result.created_questions.length}道题目`);
+    console.log(`✅ 批量导入题目成功: ${paper.title} - ${mode}模式 - 新增${result.created_count}道，更新${result.updated_count}道题目`);
+    
   } catch (error) {
     console.error('批量导入题目错误:', error);
-    sendError(res, '批量导入题目失败', 500);
+    
+    // 根据错误类型返回更具体的信息
+    if (error instanceof SyntaxError) {
+      sendError(res, '文件格式错误：JSON 解析失败', 400);
+    } else if ((error as any)?.code === 'P2002') {
+      sendError(res, '题目顺序冲突，请检查题目排序设置', 400);
+    } else {
+      const message = error instanceof Error && error.message ? error.message : '批量导入题目失败';
+      sendError(res, `批量导入题目失败: ${message}`, 500);
+    }
   }
 };
 

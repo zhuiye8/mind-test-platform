@@ -17,6 +17,11 @@ export {
   batchReorderQuestions
 } from './batch.controller';
 
+// 导入导出功能
+export {
+  exportQuestions
+} from './export.controller';
+
 // 分析功能
 export {
   getPaperDependencyGraph,

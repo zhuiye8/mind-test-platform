@@ -46,8 +46,9 @@
     }
   }
 
-  // RTSP 音频状态轮询（活跃/间歇/无数据）
+  // RTSP 音频状态轮询（活跃/间歇/无数据） - 已禁用
   function startAudioStatusPolling(student){
+    return; // 已禁用音频状态轮询
     if (typeof window.stopAudioStatusPolling === 'function') {
       window.stopAudioStatusPolling();
     }
@@ -79,6 +80,7 @@
   }
 
   function stopAudioStatusPolling(){
+    return; // 已禁用音频状态轮询
     if (window.audioStatusTimer) { clearInterval(window.audioStatusTimer); window.audioStatusTimer = null; }
     const el = document.getElementById('rtspAudioStatus');
     if (el) { el.textContent = '音频状态: --'; el.style.color = '#ccc'; }

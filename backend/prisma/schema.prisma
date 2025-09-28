@@ -82,6 +82,7 @@ model Teacher {
   // 关系
   papers Paper[]
   exams  Exam[]
+  importExportLogs ImportExportLog[]
 
   // 数据库索引优化
   @@index([role, isActive]) // 按角色和状态查询
@@ -106,6 +107,7 @@ model Paper {
   questions Question[]
   exams     Exam[]
   scales    Scale[]
+  importExportLogs ImportExportLog[]
 
   // 数据库索引优化
   @@index([teacherId, createdAt(sort: Desc)]) // 按教师ID和创建时间查询试卷列表
@@ -144,6 +146,12 @@ model Question {
   scoreValue       Int?     @map("score_value") // 题目基础分值
   isRequired       Boolean  @default(true) @map("is_required") // 是否必填
   isScored         Boolean  @default(false) @map("is_scored") // 是否计分（排除填充题）
+  
+  // 新增：版本控制和软删除
+  version          Int      @default(1)
+  isDeleted        Boolean  @default(false) @map("is_deleted")
+  deletedAt        DateTime? @map("deleted_at")
+  
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -158,6 +166,7 @@ model Question {
   @@index([paperId, questionOrder]) // 按试卷ID和题目顺序查询题目
   @@index([paperId, createdAt(sort: Desc)]) // 按试卷ID和创建时间查询
   @@index([scaleId, questionOrder]) // 按维度ID和题目顺序查询
+  @@index([paperId, isDeleted]) // 按试卷ID和删除状态查询
   @@map("questions")
 }
 
@@ -168,7 +177,7 @@ model Exam {
   teacherId            String    @map("teacher_id")
   publicUuid           String    @unique @default(uuid()) @map("public_uuid")
   title                String
-  questionIdsSnapshot  Json      @map("question_ids_snapshot") // PostgreSQL JSONB字段
+  questionSnapshot     Json      @map("question_snapshot") // 轻量级题目快照（包含版本信息）
   shuffleQuestions     Boolean   @default(false) @map("shuffle_questions")
   password             String?
   startTime            DateTime? @map("start_time")
@@ -501,4 +510,27 @@ model QuestionActionEvent {
   @@index([examResultId, occurred_at])
   @@index([examResultId, questionId, occurred_at])
   @@map("question_action_events")
+}
+
+// 导入导出记录表
+model ImportExportLog {
+  id            String   @id @default(uuid())
+  teacherId     String   @map("teacher_id")
+  paperId       String?  @map("paper_id")
+  operation     String   // 'import', 'export', 'batch_import'
+  mode          String?  // 'append', 'replace', 'merge'
+  fileName      String   @map("file_name")
+  fileFormat    String   @map("file_format") // 'json', 'csv', 'excel'
+  itemCount     Int      @map("item_count")
+  successCount  Int      @map("success_count")
+  failedCount   Int      @map("failed_count")
+  conflicts     Json?    // 冲突记录
+  result        Json     // 详细结果
+  createdAt     DateTime @default(now()) @map("created_at")
+  
+  teacher Teacher @relation(fields: [teacherId], references: [id])
+  paper   Paper?  @relation(fields: [paperId], references: [id])
+  
+  @@index([teacherId, createdAt(sort: Desc)])
+  @@map("import_export_logs")
 }

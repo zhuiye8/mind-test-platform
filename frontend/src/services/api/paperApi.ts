@@ -70,4 +70,32 @@ export const paperApi = {
   }>> => {
     return api.post(`/teacher/papers/${paperId}/batch-scoring/preview`, data);
   },
+
+  // 批量导入题目
+  batchImportQuestions: (paperId: string, formData: FormData): Promise<ApiResponse<{
+    success: boolean,
+    message: string,
+    imported_count: number,
+    skipped_count: number,
+    error_count: number,
+    errors: string[],
+    preview_data?: any[],
+    created_count?: number,
+    updated_count?: number
+  }>> => {
+    return api.post(`/teacher/papers/${paperId}/questions/batch-import`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+
+  // 导出题目
+  exportQuestions: (paperId: string, params: string): Promise<ApiResponse<string>> => {
+    return api.get(`/teacher/papers/${paperId}/questions/export?${params}`, {
+      headers: {
+        'Accept': 'text/plain, application/json',
+      },
+    });
+  },
 };

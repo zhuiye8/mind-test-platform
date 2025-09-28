@@ -165,7 +165,8 @@ export const getTeacherExams = async (req: Request, res: Response): Promise<void
     const statusCounts = await getStatusCounts();
 
     const formattedExams = exams.map(exam => {
-      const questionIds = exam.questionIdsSnapshot as string[];
+      const questionSnapshot = exam.questionSnapshot as any;
+      const questionIds = questionSnapshot?.questions?.map((q: any) => q.id) || [];
       
       return {
         id: exam.id,
@@ -173,7 +174,7 @@ export const getTeacherExams = async (req: Request, res: Response): Promise<void
         title: exam.title,
         paper_title: exam.paper.title,
         duration_minutes: exam.durationMinutes,
-        question_count: questionIds.length,
+        question_count: questionSnapshot?.total_count || questionIds.length,
         participant_count: exam._count.results,
         start_time: exam.startTime,
         end_time: exam.endTime,
@@ -336,7 +337,8 @@ export const getArchivedExams = async (req: Request, res: Response): Promise<voi
 
     // 格式化归档考试数据
     const formattedExams = exams.map(exam => {
-      const questionIds = exam.questionIdsSnapshot as string[];
+      const questionSnapshot = exam.questionSnapshot as any;
+      const questionIds = questionSnapshot?.questions?.map((q: any) => q.id) || [];
       
       return {
         id: exam.id,
@@ -344,7 +346,7 @@ export const getArchivedExams = async (req: Request, res: Response): Promise<voi
         title: exam.title,
         paper_title: exam.paper.title,
         duration_minutes: exam.durationMinutes,
-        question_count: questionIds.length,
+        question_count: questionSnapshot?.total_count || questionIds.length,
         participant_count: exam._count.results,
         start_time: exam.startTime,
         end_time: exam.endTime,
@@ -402,7 +404,7 @@ export const getExamQuestions = async (req: Request, res: Response): Promise<voi
       select: {
         id: true,
         title: true,
-        questionIdsSnapshot: true,
+        questionSnapshot: true,
       },
     });
 
@@ -411,8 +413,9 @@ export const getExamQuestions = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // 安全处理questionIdsSnapshot
-    const questionIds = (exam.questionIdsSnapshot as string[]) || [];
+    // 安全处理questionSnapshot
+    const questionSnapshot = exam.questionSnapshot as any;
+    const questionIds = questionSnapshot?.questions?.map((q: any) => q.id) || [];
     if (questionIds.length === 0) {
       sendSuccess(res, []);
       return;

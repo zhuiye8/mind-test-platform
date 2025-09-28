@@ -49,7 +49,7 @@ export async function parseTimelineData(
     where: { id: examResultId },
     include: {
       exam: {
-        select: { questionIdsSnapshot: true }
+        select: { questionSnapshot: true }
       }
     }
   });
@@ -58,9 +58,10 @@ export async function parseTimelineData(
     throw new Error('考试结果不存在');
   }
   
-  const questionIds = examResult.exam.questionIdsSnapshot as string[];
+  const questionSnapshot = examResult.exam.questionSnapshot as any;
+  const questionIds = questionSnapshot?.questions?.map((q: any) => q.id) || [];
   const questionOrderMap = new Map<string, number>();
-  questionIds.forEach((qId, index) => {
+  questionIds.forEach((qId: string, index: number) => {
     questionOrderMap.set(qId, index + 1);
   });
   

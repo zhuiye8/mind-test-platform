@@ -297,9 +297,13 @@ export const deleteQuestion = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 删除题目
-    await prisma.question.delete({
+    // 软删除题目（保护考试快照的完整性）
+    await prisma.question.update({
       where: { id: questionId },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date()
+      }
     });
 
     sendSuccess(res, { message: '题目删除成功' });

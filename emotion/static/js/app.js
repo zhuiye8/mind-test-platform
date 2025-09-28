@@ -794,6 +794,7 @@ function startVideoAnalysis() {
 }
 
 function startAudioVisualization() {
+    return; // 已禁用音频可视化
     const canvas = elements.audioCanvas;
     const context = canvas.getContext('2d');
     const audioLevelElement = document.getElementById('audio-level');
@@ -1792,7 +1793,24 @@ function updateEmotionDetails(type, dominantEmotion, confidence) {
 }
 
 function updateTrendData(type, emotion, timestamp) {
-    const time = new Date(timestamp).toLocaleTimeString();
+    let parsed = null;
+
+    if (timestamp) {
+        const candidate = new Date(timestamp);
+        if (!Number.isNaN(candidate.getTime())) {
+            parsed = candidate;
+        }
+    }
+
+    if (!parsed) {
+        if (!updateTrendData._warnedMissingTimestamp) {
+            console.warn('趋势数据缺少有效时间戳，使用当前时间作为兜底。', { type, emotion, timestamp });
+            updateTrendData._warnedMissingTimestamp = true;
+        }
+        parsed = new Date();
+    }
+
+    const time = parsed.toLocaleTimeString();
 
     // 情绪强度映射 - 支持9类情绪
     const emotionIntensity = {
@@ -1818,10 +1836,12 @@ function updateTrendData(type, emotion, timestamp) {
 
     if (type === 'audio') {
         emotionTrendData.audioData.push(intensity);
-        emotionTrendData.videoData.push(emotionTrendData.videoData[emotionTrendData.videoData.length - 1] || 0);
+        const lastVideo = emotionTrendData.videoData[emotionTrendData.videoData.length - 1] || 0;
+        emotionTrendData.videoData.push(lastVideo);
     } else {
         emotionTrendData.videoData.push(intensity);
-        emotionTrendData.audioData.push(emotionTrendData.audioData[emotionTrendData.audioData.length - 1] || 0);
+        const lastAudio = emotionTrendData.audioData[emotionTrendData.audioData.length - 1] || 0;
+        emotionTrendData.audioData.push(lastAudio);
     }
 
     // 限制数据点数量
@@ -1838,8 +1858,8 @@ function updateTrendData(type, emotion, timestamp) {
 function updateTrendChart() {
     if (!emotionTrendChart) return;
 
-    const showAudio = document.getElementById('show-audio-trend').checked;
-    const showVideo = document.getElementById('show-video-trend').checked;
+    const showAudio = elements.showAudioTrend ? elements.showAudioTrend.checked : true;
+    const showVideo = elements.showVideoTrend ? elements.showVideoTrend.checked : true;
 
     emotionTrendChart.data.labels = emotionTrendData.labels;
     emotionTrendChart.data.datasets[0].data = showAudio ? emotionTrendData.audioData : [];
@@ -3062,6 +3082,7 @@ let audioFileAnalyser = null;
 let audioFileContext = null;
 
 function startAudioFileVisualization(audioElement) {
+    return; // 已禁用音频文件可视化
     try {
         console.log('启动音频文件可视化');
         
@@ -4009,7 +4030,7 @@ function selectStudent(sessionId) {
         } catch (e) { console.warn('订阅监控房间失败（不影响播放）:', e); }
         startWhepPlaybackForStudent(currentMonitoringStudent);
         try { startStatePollingForStudent(currentMonitoringStudent); } catch (e) { console.warn('启动状态轮询失败：', e); }
-        try { startAudioStatusPolling(currentMonitoringStudent); } catch (e) { console.warn('启动音频状态轮询失败：', e); }
+        // try { startAudioStatusPolling(currentMonitoringStudent); } catch (e) { console.warn('启动音频状态轮询失败：', e); } // 已禁用音频状态轮询
       });
 }
 
@@ -4056,7 +4077,7 @@ function disconnectCurrentStudent() {
     clearDetectionResults();
     stopWhepPlayback();
     try { stopRemoteAudioForwarding(); } catch {}
-    stopAudioStatusPolling();
+    // stopAudioStatusPolling(); // 已禁用音频状态轮询
     stopStatePolling();
     
     // 更新学生列表显示，移除选中状态
@@ -4403,8 +4424,9 @@ function startStatePollingForStudent(student) {
     }, 1000);
 }
 
-// ==== RTSP 音频状态指示 ====
+// ==== RTSP 音频状态指示 ==== (已禁用)
 function startAudioStatusPolling(student) {
+    return; // 已禁用音频状态轮询
     stopAudioStatusPolling();
     if (!student) return;
     const el = document.getElementById('rtspAudioStatus');
@@ -4434,6 +4456,7 @@ function startAudioStatusPolling(student) {
 }
 
 function stopAudioStatusPolling() {
+    return; // 已禁用音频状态轮询
     if (audioStatusTimer) { clearInterval(audioStatusTimer); audioStatusTimer = null; }
     const el = document.getElementById('rtspAudioStatus');
     if (el) { el.textContent = '音频状态: --'; el.style.color = '#ccc'; }

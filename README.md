@@ -46,7 +46,7 @@ docker-compose -p psychology-test-platform up -d
 
 部署完成后，访问以下地址：
 
-- **🌐 前端界面**: http://localhost:3000
+- **🌐 前端界面**: https://localhost:3000
 - **🔧 后端API**: http://localhost:3001/api
 - **💚 健康检查**: http://localhost:3001/health
 

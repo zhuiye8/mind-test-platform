@@ -27,9 +27,12 @@ export const getQuestionsByPaper = async (req: Request, res: Response): Promise<
       return;
     }
 
-    // 获取题目列表（包含语音文件信息）
+    // 获取题目列表（包含语音文件信息，排除已删除题目）
     const questions = await prisma.question.findMany({
-      where: { paperId },
+      where: { 
+        paperId,
+        isDeleted: false // 排除已删除的题目
+      },
       orderBy: { questionOrder: 'asc' },
       include: {
         audio: {

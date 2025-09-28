@@ -204,7 +204,8 @@ export const getExamResultDetail = async (req: Request, res: Response): Promise<
     const result = exam.results[0];
 
     // 获取题目信息
-    const questionIds = exam.questionIdsSnapshot as string[];
+    const questionSnapshot = exam.questionSnapshot as any;
+    const questionIds = questionSnapshot?.questions?.map((q: any) => q.id) || [];
     const questions = await prisma.question.findMany({
       where: {
         id: { in: questionIds },

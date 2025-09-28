@@ -1,8 +1,11 @@
 import base64
 import io
+from datetime import datetime
+
 import numpy as np
 from PIL import Image
 from flask_socketio import emit
+
 from utils.data_manager import DataManager
 
 class WebSocketHandler:
@@ -72,6 +75,7 @@ class WebSocketHandler:
                 # TODO: 这里集成Emotion2Vec模型
                 # 目前使用模拟数据
                 emotion_result = self._analyze_audio_emotion(audio_bytes)
+                emotion_result['timestamp'] = datetime.now().isoformat()
                 
                 # 保存结果到数据库
                 self.data_manager.add_audio_emotion(session_id, emotion_result)
@@ -119,6 +123,7 @@ class WebSocketHandler:
                 # TODO: 这里集成DeepFace模型
                 # 目前使用模拟数据
                 emotion_result = self._analyze_face_emotion(image_array)
+                emotion_result['timestamp'] = datetime.now().isoformat()
                 
                 # 保存结果到数据库
                 self.data_manager.add_video_emotion(session_id, emotion_result)

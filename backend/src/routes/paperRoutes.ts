@@ -16,6 +16,7 @@ import {
   batchDeleteQuestions,
   batchImportQuestions,
   batchReorderQuestions,
+  exportQuestions,
   getPaperDependencyGraph,
   validateQuestionCondition,
   // 语音管理相关API
@@ -32,6 +33,7 @@ import {
   previewBatchScoring,
 } from '../controllers/question';
 import { authenticateToken } from '../middleware/auth';
+import { uploadSingle } from '../middleware/upload';
 
 const router = Router();
 
@@ -55,8 +57,9 @@ router.delete('/questions/:questionId', deleteQuestion);   // 删除题目
 router.post('/:paperId/questions/batch-create', batchCreateQuestions);    // 批量创建题目
 router.put('/questions/batch-update', batchUpdateQuestions);              // 批量更新题目
 router.delete('/questions/batch-delete', batchDeleteQuestions);           // 批量删除题目
-router.post('/:paperId/questions/batch-import', batchImportQuestions);    // 批量导入题目
+router.post('/:paperId/questions/batch-import', uploadSingle, batchImportQuestions);    // 批量导入题目（文件上传）
 router.put('/:paperId/questions/batch-reorder', batchReorderQuestions);   // 批量调整排序
+router.get('/:paperId/questions/export', exportQuestions);               // 导出题目
 
 // 语音文件管理路由 (V1.0.1 新增)
 router.post('/:paperId/audio/batch-generate', batchGenerateAudio);        // 批量生成语音文件  

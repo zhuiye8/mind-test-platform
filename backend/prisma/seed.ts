@@ -348,36 +348,84 @@ async function main(): Promise<void> {
   const scasFiller = scasAllQuestions.filter(q => !q.isScored).length;
   console.log(`✅ 创建SCAS量表: ${createdScasScales.length}个维度, ${scasQuestionIds.length}道题目 (${scasScored}计分 + ${scasFiller}填充)`);
 
-  // 创建考试实例
+  // 创建考试实例 - 使用轻量级快照
+  const asqQuestionSnapshot = {
+    version: 2,
+    created_at: new Date(),
+    questions: asqQuestionIds.map((id, index) => {
+      const questionData = allAsqQuestions[index];
+      return {
+        id,
+        version: 1,
+        order: index + 1,
+        title: questionData.text.substring(0, 100),
+        type: 'single_choice',
+        required: true
+      };
+    }),
+    total_count: asqQuestionIds.length
+  };
+  
   const asqExam = await prisma.exam.create({
     data: {
       title: '2025年ASQ青少年压力评估测试',
       paperId: asqPaper.id,
       teacherId: teacher.id,
       durationMinutes: 45,
-      questionIdsSnapshot: asqQuestionIds,
+      questionSnapshot: asqQuestionSnapshot,
       status: 'PUBLISHED',
     },
   });
 
+  const scaredQuestionSnapshot = {
+    version: 2,
+    created_at: new Date(),
+    questions: scaredQuestionIds.map((id, index) => ({
+      id,
+      version: 1,
+      order: index + 1,
+      title: scaredQuestions[index].substring(0, 100),
+      type: 'single_choice',
+      required: true
+    })),
+    total_count: scaredQuestionIds.length
+  };
+  
   const scaredExam = await prisma.exam.create({
     data: {
       title: '2025年SCARED儿童焦虑筛查测试',
       paperId: scaredPaper.id,
       teacherId: teacher.id,
       durationMinutes: 30,
-      questionIdsSnapshot: scaredQuestionIds,
+      questionSnapshot: scaredQuestionSnapshot,
       status: 'PUBLISHED',
     },
   });
 
+  const scasQuestionSnapshot = {
+    version: 2,
+    created_at: new Date(),
+    questions: scasQuestionIds.map((id, index) => {
+      const questionData = scasAllQuestions[index];
+      return {
+        id,
+        version: 1,
+        order: index + 1,
+        title: questionData.text.substring(0, 100),
+        type: 'single_choice',
+        required: true
+      };
+    }),
+    total_count: scasQuestionIds.length
+  };
+  
   const scasExam = await prisma.exam.create({
     data: {
       title: '2025年SCAS斯宾思儿童焦虑量表测试',
       paperId: scasPaper.id,
       teacherId: teacher.id,
       durationMinutes: 35,
-      questionIdsSnapshot: scasQuestionIds,
+      questionSnapshot: scasQuestionSnapshot,
       status: 'PUBLISHED',
     },
   });
@@ -757,13 +805,30 @@ async function main(): Promise<void> {
   }
 
   // 创建测试考试
+  const testQuestionSnapshot = {
+    version: 2,
+    created_at: new Date(),
+    questions: testQuestionIds.map((id, index) => {
+      const questionData = testQuestions[index];
+      return {
+        id,
+        version: 1,
+        order: index + 1,
+        title: questionData.title.substring(0, 100),
+        type: questionData.type,
+        required: questionData.required
+      };
+    }),
+    total_count: testQuestionIds.length
+  };
+  
   const testExam = await prisma.exam.create({
     data: {
       title: '临时功能测试',
       paperId: testPaper.id,
       teacherId: teacher.id,
       durationMinutes: 15,
-      questionIdsSnapshot: testQuestionIds,
+      questionSnapshot: testQuestionSnapshot,
       status: 'PUBLISHED',
     },
   });

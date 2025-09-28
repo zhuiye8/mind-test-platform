@@ -24,8 +24,7 @@ const examDetailInclude = {
 };
 
 const buildExamResponse = (exam: any) => {
-  const snapshot = exam.questionIdsSnapshot;
-  const questionIds = Array.isArray(snapshot) ? (snapshot as string[]) : [];
+  const questionSnapshot = exam.questionSnapshot;
 
   return {
     id: exam.id,
@@ -33,7 +32,7 @@ const buildExamResponse = (exam: any) => {
     title: exam.title,
     paper_title: exam.paper?.title,
     duration_minutes: exam.durationMinutes,
-    question_count: questionIds.length,
+    question_count: questionSnapshot?.total_count || 0,
     participant_count: exam._count?.results ?? 0,
     start_time: exam.startTime,
     end_time: exam.endTime,
@@ -168,7 +167,7 @@ export const finishExam = async (req: Request, res: Response): Promise<void> => 
       },
     });
 
-    const questionIds = updatedExam.questionIdsSnapshot as string[];
+    const questionSnapshot = updatedExam.questionSnapshot as any;
 
     // 构建响应数据（遵循现有格式）
     const responseData = {
@@ -177,7 +176,7 @@ export const finishExam = async (req: Request, res: Response): Promise<void> => 
       title: updatedExam.title,
       paper_title: updatedExam.paper.title,
       duration_minutes: updatedExam.durationMinutes,
-      question_count: questionIds.length,
+      question_count: questionSnapshot?.total_count || 0,
       participant_count: updatedExam._count.results,
       start_time: updatedExam.startTime,
       end_time: updatedExam.endTime,
@@ -274,7 +273,7 @@ export const archiveExam = async (req: Request, res: Response): Promise<void> =>
       },
     });
 
-    const questionIds = updatedExam.questionIdsSnapshot as string[];
+    const questionSnapshot = updatedExam.questionSnapshot as any;
 
     const responseData = {
       id: updatedExam.id,
@@ -282,7 +281,7 @@ export const archiveExam = async (req: Request, res: Response): Promise<void> =>
       title: updatedExam.title,
       paper_title: updatedExam.paper.title,
       duration_minutes: updatedExam.durationMinutes,
-      question_count: questionIds.length,
+      question_count: questionSnapshot?.total_count || 0,
       participant_count: updatedExam._count.results,
       start_time: updatedExam.startTime,
       end_time: updatedExam.endTime,
@@ -379,7 +378,7 @@ export const restoreExam = async (req: Request, res: Response): Promise<void> =>
       },
     });
 
-    const questionIds = updatedExam.questionIdsSnapshot as string[];
+    const questionSnapshot = updatedExam.questionSnapshot as any;
 
     const responseData = {
       id: updatedExam.id,
@@ -387,7 +386,7 @@ export const restoreExam = async (req: Request, res: Response): Promise<void> =>
       title: updatedExam.title,
       paper_title: updatedExam.paper.title,
       duration_minutes: updatedExam.durationMinutes,
-      question_count: questionIds.length,
+      question_count: questionSnapshot?.total_count || 0,
       participant_count: updatedExam._count.results,
       start_time: updatedExam.startTime,
       end_time: updatedExam.endTime,

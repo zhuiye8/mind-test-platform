@@ -53,8 +53,15 @@ export const createExam = async (req: Request, res: Response): Promise<void> => 
       },
       include: {
         questions: {
+          where: { isDeleted: false }, // 只包含未删除的题目
           orderBy: { questionOrder: 'asc' },
-          select: { id: true },
+          select: { 
+            id: true, 
+            title: true, 
+            questionType: true,
+            isRequired: true,
+            version: true 
+          },
         },
       },
     });
@@ -69,8 +76,20 @@ export const createExam = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // 生成题目ID快照
-    const questionIds = paper.questions.map(q => q.id);
+    // 生成轻量级题目快照
+    const questionSnapshot = {
+      version: 2,
+      created_at: new Date(),
+      questions: paper.questions.map((q, index) => ({
+        id: q.id,
+        version: q.version,
+        order: index + 1,
+        title: q.title.substring(0, 100), // 只存储前100字符
+        type: q.questionType,
+        required: q.isRequired
+      })),
+      total_count: paper.questions.length
+    };
 
     // 处理密码哈希
     const hashedPassword = password ? await hashPassword(password) : null;
@@ -82,7 +101,7 @@ export const createExam = async (req: Request, res: Response): Promise<void> => 
         teacherId,
         title,
         durationMinutes: duration_minutes,
-        questionIdsSnapshot: questionIds,
+        questionSnapshot,
         startTime: start_time ? new Date(start_time) : null,
         endTime: end_time ? new Date(end_time) : null,
         password: hashedPassword,
@@ -105,7 +124,7 @@ export const createExam = async (req: Request, res: Response): Promise<void> => 
       title: exam.title,
       paper_title: exam.paper.title,
       duration_minutes: exam.durationMinutes,
-      question_count: questionIds.length,
+      question_count: questionSnapshot.total_count,
       start_time: exam.startTime,
       end_time: exam.endTime,
       has_password: !!exam.password,
@@ -160,9 +179,10 @@ export const getExamById = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    // 安全处理questionIdsSnapshot，避免空值错误
-    const questionIds = (exam.questionIdsSnapshot as string[]) || [];
-    console.log(`获取考试详情: ${examId}, 题目数: ${questionIds.length}`);
+    // 安全处理questionSnapshot，避免空值错误
+    const questionSnapshot = exam.questionSnapshot as any;
+    const questionCount = questionSnapshot?.total_count || 0;
+    console.log(`获取考试详情: ${examId}, 题目数: ${questionCount}`);
 
     // 获取完成结果统计
     const completedResults = await prisma.examResult.count({
@@ -179,7 +199,7 @@ export const getExamById = async (req: Request, res: Response): Promise<void> =>
       paper_title: exam.paper.title,
       paper_id: exam.paperId,
       duration_minutes: exam.durationMinutes,
-      question_count: questionIds.length,
+      question_count: questionCount,
       participant_count: exam._count.results,
       completion_count: completedResults,
       start_time: exam.startTime,
@@ -280,7 +300,7 @@ export const updateExam = async (req: Request, res: Response): Promise<void> => 
       },
     });
 
-    const questionIds = updatedExam.questionIdsSnapshot as string[];
+    const questionSnapshot = updatedExam.questionSnapshot as any;
 
     sendSuccess(res, {
       id: updatedExam.id,
@@ -288,7 +308,7 @@ export const updateExam = async (req: Request, res: Response): Promise<void> => 
       title: updatedExam.title,
       paper_title: updatedExam.paper.title,
       duration_minutes: updatedExam.durationMinutes,
-      question_count: questionIds.length,
+      question_count: questionSnapshot?.total_count || 0,
       start_time: updatedExam.startTime,
       end_time: updatedExam.endTime,
       has_password: !!updatedExam.password,

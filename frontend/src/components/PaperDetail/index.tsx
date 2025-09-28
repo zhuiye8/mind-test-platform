@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Button, Space, message, Modal, Spin, Tabs } from 'antd';
-import { PlusOutlined, SoundOutlined, ExperimentOutlined, CalculatorOutlined } from '@ant-design/icons';
+import { PlusOutlined, SoundOutlined, ExperimentOutlined, CalculatorOutlined, DownloadOutlined } from '@ant-design/icons';
 
 // 拆分后的子组件
 import PaperHeader from './PaperHeader';
@@ -17,6 +17,8 @@ import { usePaperDetail } from './usePaperDetail';
 import QuestionModal from '../QuestionModal';
 import AudioManagementPanel from '../AudioManagementPanel';
 import BatchScoringModal from './BatchScoringModal';
+import BatchImportModal from './BatchImportModal';
+import ExportConfigModal from './ExportConfigModal';
 
 // 使用 items API，避免 TabPane 弃用告警
 
@@ -26,6 +28,10 @@ const PaperDetail: React.FC = () => {
   
   // 批量计分模态框状态
   const [batchScoringVisible, setBatchScoringVisible] = useState(false);
+  
+  // 批量导入导出模态框状态
+  const [batchImportVisible, setBatchImportVisible] = useState(false);
+  const [exportConfigVisible, setExportConfigVisible] = useState(false);
 
   // 使用自定义Hook管理状态和逻辑
   const {
@@ -68,6 +74,26 @@ const PaperDetail: React.FC = () => {
   // 批量计分完成回调
   const handleBatchScoringSuccess = () => {
     refreshQuestions(); // 刷新题目列表
+  };
+
+  // 批量导入处理
+  const handleBatchImport = () => {
+    setBatchImportVisible(true);
+  };
+
+  // 批量导出处理
+  const handleBatchExport = () => {
+    if (questions.length === 0) {
+      message.warning('当前试卷没有题目，无法导出');
+      return;
+    }
+    setExportConfigVisible(true);
+  };
+
+  // 批量导入成功回调
+  const handleImportSuccess = () => {
+    refreshQuestions(); // 刷新题目列表
+    message.success('导入完成，题目列表已更新');
   };
 
   if (!paperId) {
@@ -137,12 +163,42 @@ const PaperDetail: React.FC = () => {
                 key: 'batch',
                 label: '批量操作',
                 children: (
-                  <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                    <Space>
-                      <Button type="primary" onClick={() => message.info('批量导入：选择文件上传后解析入库（开发中）')}>批量导入题目</Button>
-                      <Button onClick={() => message.info('批量导出：导出当前试卷题目到CSV/JSON（开发中）')}>批量导出题目</Button>
-                    </Space>
-                    <div style={{ marginTop: 12, color: '#999' }}>功能规划中，当前按钮为占位行为</div>
+                  <div style={{ padding: '20px 0' }}>
+                    <Card title="题目批量操作" style={{ marginBottom: 20 }}>
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <div>
+                          <Space>
+                            <Button 
+                              type="primary" 
+                              icon={<PlusOutlined />}
+                              onClick={handleBatchImport}
+                            >
+                              批量导入题目
+                            </Button>
+                            <Button 
+                              icon={<DownloadOutlined />}
+                              onClick={handleBatchExport}
+                              disabled={questions.length === 0}
+                            >
+                              批量导出题目
+                            </Button>
+                          </Space>
+                        </div>
+                        <div style={{ color: '#666', fontSize: '12px' }}>
+                          支持 JSON/CSV 格式的题目文件导入导出，支持追加、替换、合并等多种导入模式
+                        </div>
+                      </Space>
+                    </Card>
+
+                    <Card title="操作说明" size="small">
+                      <ul style={{ margin: 0, paddingLeft: 20 }}>
+                        <li>批量导入支持 JSON 和 CSV 格式文件</li>
+                        <li>提供追加、替换、合并三种导入模式</li>
+                        <li>替换模式不会影响已发布的考试（快照机制保护）</li>
+                        <li>导出文件可用于备份、迁移或批量编辑</li>
+                        <li>支持按题目类型过滤导出内容</li>
+                      </ul>
+                    </Card>
                   </div>
                 ),
               },
@@ -165,6 +221,23 @@ const PaperDetail: React.FC = () => {
           paperId={paperId}
           paperTitle={paper?.title}
           onSuccess={handleBatchScoringSuccess}
+        />
+
+        {/* 批量导入模态框 */}
+        <BatchImportModal
+          visible={batchImportVisible}
+          onClose={() => setBatchImportVisible(false)}
+          paperId={paperId}
+          onSuccess={handleImportSuccess}
+        />
+
+        {/* 导出配置模态框 */}
+        <ExportConfigModal
+          visible={exportConfigVisible}
+          onClose={() => setExportConfigVisible(false)}
+          paperId={paperId}
+          paperTitle={paper?.title || ''}
+          questions={questions}
         />
       </Spin>
     </div>

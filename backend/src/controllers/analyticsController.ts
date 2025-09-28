@@ -267,14 +267,14 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
 
     // 格式化最近考试数据  
     const formattedRecentExams = recentExams.map(exam => {
-      const questionIds = exam.questionIdsSnapshot as string[];
+      const questionSnapshot = exam.questionSnapshot as any;
       return {
         id: exam.id,
         public_uuid: exam.publicUuid,
         title: exam.title,
         paper_title: exam.paper.title,
         duration_minutes: exam.durationMinutes,
-        question_count: questionIds.length,
+        question_count: questionSnapshot?.total_count || 0,
         result_count: exam._count.results, // 前端期望的字段名
         participant_count: exam._count.results,
         start_time: exam.startTime,
