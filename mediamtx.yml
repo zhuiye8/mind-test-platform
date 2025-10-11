@@ -1,0 +1,198 @@
+###############################################
+# MediaMTX 1.14.0 高质量 WebRTC 传输配置
+# 专为 WHIP/WHEP 协议优化
+###############################################
+
+# 日志配置
+logLevel: debug
+logDestinations: [stdout]
+logFile: mediamtx.log
+
+# 全局设置
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 512
+udpMaxPayloadSize: 1472
+
+###############################################
+# 认证配置 - 允许匿名访问
+###############################################
+
+authMethod: internal
+
+# 内部用户认证
+authInternalUsers:
+  # 默认用户 - 允许所有操作
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+        path:
+      - action: read
+        path:
+      - action: playback
+        path:
+  
+  # 管理员用户 - 本地访问 API
+  - user: any
+    pass:
+    ips: ['127.0.0.1', '::1']
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+
+###############################################
+# API 配置 (可选)
+###############################################
+
+api: no
+apiAddress: :9997
+
+###############################################
+# 监控配置 (可选)
+###############################################
+
+metrics: no
+metricsAddress: :9998
+
+pprof: no
+pprofAddress: :9999
+
+playback: no
+playbackAddress: :9996
+
+###############################################
+# RTSP 服务器配置
+###############################################
+
+rtsp: yes
+rtspAddress: :8554
+rtspEncryption: "no"
+rtspTransports: [udp, multicast, tcp]
+
+###############################################
+# RTMP 服务器配置
+###############################################
+
+rtmp: yes
+rtmpAddress: :1935
+rtmpEncryption: "no"
+
+###############################################
+# HLS 服务器配置
+###############################################
+
+hls: yes
+hlsAddress: :8888
+hlsEncryption: no
+hlsAllowOrigin: '*'
+hlsAlwaysRemux: no
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+
+###############################################
+# WebRTC 服务器配置 - 核心配置
+###############################################
+
+webrtc: yes
+
+# HTTP 监听地址 (WHIP/WHEP 信令)
+webrtcAddress: :8889
+
+# 加密配置
+webrtcEncryption: no
+webrtcServerKey: server.key
+webrtcServerCert: server.crt
+
+# CORS 配置
+webrtcAllowOrigin: '*'
+webrtcTrustedProxies: []
+
+# UDP 监听地址 (RTP/RTCP 媒体传输)
+webrtcLocalUDPAddress: :8189
+
+# TCP 监听地址 (禁用，优先使用 UDP)
+webrtcLocalTCPAddress: ''
+
+# IP 地址收集
+webrtcIPsFromInterfaces: yes
+webrtcIPsFromInterfacesList: []
+webrtcAdditionalHosts: []
+
+# ICE 服务器 (STUN/TURN)
+webrtcICEServers2: []
+
+# 超时配置
+webrtcHandshakeTimeout: 10s
+webrtcTrackGatherTimeout: 2s
+webrtcSTUNGatherTimeout: 5s
+
+###############################################
+# SRT 服务器配置
+###############################################
+
+srt: yes
+srtAddress: :8890
+
+###############################################
+# 默认路径配置
+###############################################
+
+pathDefaults:
+  # 来源配置
+  source: publisher
+  sourceOnDemand: no
+  sourceOnDemandStartTimeout: 10s
+  sourceOnDemandCloseAfter: 10s
+  
+  # 访问控制
+  maxReaders: 0
+  fallback:
+  useAbsoluteTimestamp: false
+  
+  # 录制配置 (禁用)
+  record: no
+  recordPath: ./recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 1h
+  recordDeleteAfter: 24h
+  
+  # 发布配置
+  overridePublisher: yes
+  
+  # 钩子命令 (禁用)
+  runOnInit:
+  runOnInitRestart: no
+  runOnDemand:
+  runOnDemandRestart: no
+  runOnDemandStartTimeout: 10s
+  runOnDemandCloseAfter: 10s
+  runOnUnDemand:
+  runOnReady:
+  runOnReadyRestart: no
+  runOnNotReady:
+  runOnRead:
+  runOnReadRestart: no
+  runOnUnread:
+  runOnRecordSegmentCreate:
+  runOnRecordSegmentComplete:
+
+###############################################
+# 路径配置
+###############################################
+
+paths:
+  # 默认流配置
+  mystream:
+    source: publisher
+    record: no
+    
+  # 所有其他路径的默认配置
+  all_others:
+    source: publisher
+    record: no
