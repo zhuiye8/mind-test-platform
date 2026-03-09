@@ -176,7 +176,6 @@ This project is released under the MIT License.
 ## Support
 
 - Issues: [GitHub Issues](https://github.com/psychology-test-platform/issues)
-- Internal project notes: see `CLAUDE.md`
 
 ---
 
