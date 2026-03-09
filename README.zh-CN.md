@@ -258,7 +258,6 @@ npm run db:studio
 
 - 📧 Email: support@psychology-test-platform.com
 - 🐛 Issues: [GitHub Issues](https://github.com/psychology-test-platform/issues)
-- 📖 文档: 查看 `CLAUDE.md` 获取详细技术文档
 
 ---
 
